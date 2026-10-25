@@ -191,7 +191,13 @@ h1{font-size:25px;font-weight:500;letter-spacing:.10em;margin-bottom:8px;
   <button class="btn ghost" id="btnRecal2">重新校准</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+<script>
+/* MediaPipe 资源优先走同源（./mp/），同源缺失时自动回退到 jsDelivr CDN。
+   同源的目的：避开跨境 CDN 链路，模型与页面走同一个全球 CDN 边缘节点。 */
+window.__MP_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/';
+window.__MP_BASE = new URL('./mp/', location.href).href;
+</script>
+<script src="./mp/face_mesh.js" onerror="(function(){window.__MP_BASE=window.__MP_CDN;var s=document.createElement('script');s.src=window.__MP_BASE+'face_mesh.js';s.crossOrigin='anonymous';document.head.appendChild(s);})()"></script>
 <script>
 (function(){
 'use strict';
@@ -791,7 +797,7 @@ function bootFaceMesh(){
   }
   faceMesh = new window.FaceMesh({
     locateFile: function(f){
-      return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/' + f;
+      return window.__MP_BASE + f;
     }
   });
   faceMesh.setOptions({
