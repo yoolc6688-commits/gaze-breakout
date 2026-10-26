@@ -483,6 +483,14 @@ function onFace(res){
 
   if(recOpen) BLINK.openBuf.push({ t:now(), v:f.open });
 
+  /* 校准采样：必须在下面两处 return 之前，否则永远采不到帧。
+     （v0.1 把这一行漏了，导致 calBuf 恒为空、5 个点全废、报「0/5」——
+       报错文案还去怪用户的脸和光线，实际是采样管道没接线。）
+     这里刻意不用 BLINK.thr：那是游戏内眨眼判定阈值，逐人标定前默认 0.105，
+     眼裂偏小或戴眼镜的人正常睁眼就贴着线，会被整段判成闭眼而采不到样本。
+     校准只需要虹膜位置，用一个纯粹的「眼皮确实合上」硬下限即可。 */
+  if(calActive && f.open >= 0.05) calBuf.push({ ax:f.ax, ay:f.ay });
+
   /* 闭眼：不更新视线（保持上次有效值，否则睁眼瞬间会弹飞） */
   if(f.open < BLINK.thr){
     if(!BLINK.active){ BLINK.active = true; BLINK.startT = now(); }
@@ -637,12 +645,18 @@ function runCalibration(){
     $('calTip').textContent = '校准中，眼睛跟着绿点走';
 
     var calFeats = [];
+    var calDiag = [];      // 每个点实际采到的帧数，失败时直接报出来
     var chain = Promise.resolve();
     CAL_PTS.forEach(function(pt, i){
       chain = chain.then(function(){
-        $('calSub').textContent = '校准点 ' + (i+1) + ' / ' + CAL_PTS.length;
+        $('calSub').textContent = '校准点 ' + (i+1) + ' / ' + CAL_PTS.length + '　采样中…';
         $('calFill').style.width = ((i)/CAL_PTS.length*70) + '%';
-        return samplePoint(pt, 1100).then(function(r){ if(r) calFeats.push(r); });
+        return samplePoint(pt, 1100).then(function(r){
+          calDiag.push(r ? r.n : 0);
+          if(r) calFeats.push(r);
+          $('calSub').textContent = '校准点 ' + (i+1) + ' / ' + CAL_PTS.length +
+            '　采到 ' + (r ? r.n : 0) + ' 帧' + (r ? '' : '（不足 3 帧，作废）');
+        });
       });
     });
 
@@ -650,7 +664,15 @@ function runCalibration(){
       hideTarget();
       var good = calFeats.filter(function(v){ return v; });
       if(good.length < 4){
-        throw new Error('有效校准点不足（' + good.length + '/5）。请正脸入镜、光线充足、不要戴反光眼镜。');
+        /* 区分「管道断了」和「真的没看到脸」——这两种情况该给用户完全不同的指引。
+           全 0 帧说明程序侧没产出样本，怪用户毫无意义。 */
+        var zeroAll = calDiag.every(function(n){ return n === 0; });
+        if(zeroAll){
+          throw new Error('校准中断：5 个点全部采到 0 帧，采样管道没有产出数据。' +
+            '这不是你的脸、光线或眼镜的问题，是程序缺陷。请把这句原话发给我。');
+        }
+        throw new Error('有效校准点不足（' + good.length + '/5，各点帧数 ' +
+          calDiag.join(' / ') + '）。部分点没采满，通常是中途离开了画面或持续闭眼，正脸对准镜头重试即可。');
       }
 
       Model.mean.x = good.reduce(function(s,v){ return s+v.ax; },0) / good.length;
@@ -678,12 +700,16 @@ function runCalibration(){
     }).then(function(gains){
       /* 复测：验证点与校准点错开，误差才不会算成 0 */
       var verFeats = [];
+      var verDiag = [];
       var c2 = Promise.resolve();
       VER_PTS.forEach(function(pt, i){
         c2 = c2.then(function(){
-          $('calSub').textContent = '复测点 ' + (i+1) + ' / ' + VER_PTS.length;
+          $('calSub').textContent = '复测点 ' + (i+1) + ' / ' + VER_PTS.length + '　采样中…';
           $('calFill').style.width = (70 + (i+1)/VER_PTS.length*30) + '%';
-          return samplePoint(pt, 900).then(function(r){ if(r) verFeats.push(r); });
+          return samplePoint(pt, 900).then(function(r){
+            verDiag.push(r ? r.n : 0);
+            if(r) verFeats.push(r);
+          });
         });
       });
       return c2.then(function(){
@@ -696,7 +722,7 @@ function runCalibration(){
           var ey = (p.sy - v.ty) * H;
           errs.push(Math.sqrt(ex*ex + ey*ey));
         });
-        return { gains:gains, errs:errs };
+        return { gains:gains, errs:errs, verDiag:verDiag };
       });
     });
   });
