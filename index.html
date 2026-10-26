@@ -11,9 +11,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#070A14;color:#E8F4F
   font-family:-apple-system,"PingFang SC","Noto Sans SC","Helvetica Neue",Arial,sans-serif;
   overscroll-behavior:none;-webkit-user-select:none;user-select:none}
 #game{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:1}
-#cam{position:fixed;right:10px;top:70px;width:86px;height:64px;object-fit:cover;
-  border-radius:10px;transform:scaleX(-1);border:1px solid rgba(79,227,255,.35);
-  opacity:.72;z-index:30;pointer-events:none;background:#000;transition:opacity .2s}
+/* 画面上不显示前置摄像头预览：缩到 2px 并近乎全透明，但仍留在视口内，
+   保证浏览器持续解码视频帧供 MediaPipe 取用（display:none 会让部分机型停帧） */
+#cam{position:fixed;left:0;bottom:0;width:2px;height:2px;object-fit:cover;
+  transform:scaleX(-1);border:0;opacity:.01;z-index:0;pointer-events:none;background:transparent}
 #cam.hide{opacity:0}
 .scr{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
   justify-content:center;padding:32px 26px;text-align:center;z-index:20;
@@ -196,6 +197,22 @@ h1{font-size:25px;font-weight:500;letter-spacing:.10em;margin-bottom:8px;
    同源的目的：避开跨境 CDN 链路，模型与页面走同一个全球 CDN 边缘节点。 */
 window.__MP_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/';
 window.__MP_BASE = new URL('./mp/', location.href).href;
+
+/* Emscripten 胶水执行时会给全局 Module 装一批「已废弃属性」的抛错 getter：
+     if(!Object.getOwnPropertyDescriptor(Module,"arguments")) defineProperty(get(){ abort(...) })
+   之后任何代码再读到 Module.arguments 就立刻 abort，整个 wasm 实例报废。
+   胶水一旦被重复执行（重复初始化 / 脚本重复注入）必然踩中这一条。
+   这里预先把这些属性定义成普通数据属性，胶水检测到 descriptor 已存在就会跳过安装。 */
+(function(){
+  var M = window.Module = window.Module || {};
+  ['arguments', 'thisProgram'].forEach(function(k){
+    if (!Object.getOwnPropertyDescriptor(M, k)){
+      try {
+        Object.defineProperty(M, k, { configurable: true, writable: true, value: undefined });
+      } catch (e) { /* 老浏览器忽略 */ }
+    }
+  });
+})();
 </script>
 <script src="./mp/face_mesh.js" onerror="(function(){window.__MP_BASE=window.__MP_CDN;var s=document.createElement('script');s.src=window.__MP_BASE+'face_mesh.js';s.crossOrigin='anonymous';document.head.appendChild(s);})()"></script>
 <script>
@@ -226,6 +243,7 @@ var S = {
   phase     : 'boot',   // boot|calib|report|play
   camReady  : false,
   mpReady   : false,
+  mpDead    : false,    // wasm 运行时已 abort，不可恢复，只能刷新
   faceOk    : false,
   calibrated: false,
   faces     : 0,
@@ -791,9 +809,21 @@ var lastDetectT = 0;
 var detectCount = 0;
 var fpsT0 = 0;
 
+var mpBootPromise = null;
+
 function bootFaceMesh(){
+  /* 幂等 + 防重复初始化。
+     wasm 胶水里的 Module 是全局单例：第二次 new FaceMesh + initialize 会让胶水脚本
+     重复执行，撞上 emscripten 自己装的"Module.arguments 已废弃"抛错 getter，直接
+     abort("Module.arguments has been replaced with plain arguments_")。
+     abort 之后 wasm 实例不可恢复，只能刷新页面，所以这里必须挡在入口。 */
+  if (S.mpReady && faceMesh) return Promise.resolve();
+  if (mpBootPromise) return mpBootPromise;
+  if (S.mpDead){
+    return Promise.reject(new Error('虹膜引擎已停止工作，请点下方「刷新页面」重新开始'));
+  }
   if (typeof window.FaceMesh !== 'function'){
-    return Promise.reject(new Error('MediaPipe 脚本未加载，请检查网络后刷新'));
+    return Promise.reject(new Error('MediaPipe 脚本未加载完成，请检查网络后刷新页面'));
   }
   faceMesh = new window.FaceMesh({
     locateFile: function(f){
@@ -807,12 +837,24 @@ function bootFaceMesh(){
     minTrackingConfidence: 0.5
   });
   faceMesh.onResults(onFace);
-  return faceMesh.initialize().then(function(){
+
+  mpBootPromise = faceMesh.initialize().then(function(){
     S.mpReady = true;
+  }).catch(function(e){
+    mpBootPromise = null;
+    var m = (e && e.message) ? e.message : String(e);
+    if (/abort|Module\.|RuntimeError|WebAssembly/i.test(m)){
+      S.mpDead = true;
+      throw new Error('虹膜引擎在这台手机上初始化失败（wasm 运行时中断）。刷新页面可重试一次；若仍失败，说明该机型与这套引擎不兼容。');
+    }
+    throw e;
   });
+  return mpBootPromise;
 }
 
 function startCamera(){
+  /* 幂等：重复点「启动摄像头」不要重复申请流，否则旧流不释放、机型上会有白屏/黑屏 */
+  if (S.camReady && vid.srcObject) return Promise.resolve();
   var c = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
   if (!c) return Promise.reject(new Error('浏览器不支持摄像头调用'));
   if (!window.isSecureContext){
@@ -1252,9 +1294,29 @@ function fail(msg){
   var el = document.getElementById('err');
   el.style.display = 'block';
   el.textContent = '⚠ ' + msg;
+
+  /* wasm 一旦 abort 就无法在本页恢复，必须刷新；给一个明确的出口，
+     避免用户反复点「启动摄像头」把状态弄得更糟 */
+  var needReload = S.mpDead || /刷新页面|wasm|abort/i.test(String(msg));
+  var oldBtn = document.getElementById('errReload');
+  if (oldBtn && oldBtn.parentNode) oldBtn.parentNode.removeChild(oldBtn);
+  if (needReload){
+    var b = document.createElement('button');
+    b.id = 'errReload';
+    b.textContent = '刷新页面重试';
+    b.style.cssText = 'display:block;margin:16px auto 0;padding:12px 24px;border-radius:12px;' +
+      'border:1px solid rgba(79,227,255,.55);background:rgba(79,227,255,.14);color:#BFEFFF;' +
+      'font-size:15px;font-weight:600;cursor:pointer;font-family:inherit';
+    b.addEventListener('click', function(){ location.reload(); });
+    el.parentNode.insertBefore(b, el.nextSibling);
+  }
+
   document.getElementById('scrBoot').classList.remove('hide');
   document.getElementById('scrCalib').classList.add('hide');
   document.getElementById('scrReport').classList.add('hide');
+  document.getElementById('calNum').style.display = 'none';
+  document.getElementById('calBar').style.display = 'none';
+  hideTarget();
   S.phase = 'boot';
 }
 
@@ -1265,6 +1327,8 @@ elBtnStart.addEventListener('click', function(){
   elBtnStart.disabled = true;
   elHint.textContent = '正在请求摄像头…';
   document.getElementById('err').style.display = 'none';
+  var ob = document.getElementById('errReload');
+  if (ob && ob.parentNode) ob.parentNode.removeChild(ob);
 
   startCamera().then(function(){
     elHint.textContent = '正在加载虹膜模型…';
@@ -1302,6 +1366,13 @@ document.getElementById('btnRecal').addEventListener('click', function(){
 
 function enterPlay(){
   S.phase = 'play';
+  /* 所有 .scr 都是 z-index:20 的全屏遮罩，必须逐个关掉，
+     否则游戏已在跑但画面被校准层盖住，看上去就是"进不去" */
+  ['scrBoot', 'scrCalib', 'scrReport'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.classList.add('hide');
+  });
+  hideTarget();
   worldReset();
   resetFilters();
   trail = [];
@@ -1372,6 +1443,7 @@ window.GUANGQIU_EYE = {
   World: { reset: worldReset, update: updateWorld, genGate: genGate, nearestGate: nearestGate },
   calibrate: runCalibration,
   startCamera: startCamera,
+  bootFaceMesh: bootFaceMesh,
   enterPlay: enterPlay,
   step: function(n, dt){
     dt = dt || 1/60;
