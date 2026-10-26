@@ -283,7 +283,7 @@ var Gaze = {
   lostMs:0
 };
 
-var Model = { a:null, b:null, mean:{x:0,y:0} };
+var Model = { a:null, b:null, mean:{x:0,y:0}, flipX:false };  // flipX：前摄画面左右反转，x 轴需镜像
 
 /* 眨眼：逐用户阈值，默认沿用上一版 0.105，测量后按基线重算 */
 var BLINK = {
@@ -296,9 +296,16 @@ var BLINK = {
   naturalP90: 0
 };
 
+/* 两只眼的角点在画面里互为镜像，这是最容易写错的一处：
+     画面左侧那只眼：33 在左、133 在右
+     画面右侧那只眼：362 在左、263 在右
+   旧版按「外眼角 → 内眼角」取轴，于是两眼的 ax 方向相反（一个指向画面右、一个指向画面左）。
+   两眼一平均，水平信号刚好互相抵消 —— ax 基本恒在 0.5 附近不动，剩下全是噪声。
+   校准再去拟合这份噪声，就会解出 a1=-18.5 这种又负又大的斜率。
+   现在统一按「画面左 → 画面右」取轴，两眼同向，平均才有意义。 */
 var LM = {
-  R_OUTER:33, R_INNER:133, R_TOP:159, R_BOT:145, R_IRIS:468,
-  L_OUTER:263, L_INNER:362, L_TOP:386, L_BOT:374, L_IRIS:473
+  A_L:33,  A_R:133, A_TOP:159, A_BOT:145, A_IRIS:468,   // 画面左侧那只眼
+  B_L:362, B_R:263, B_TOP:386, B_BOT:374, B_IRIS:473    // 画面右侧那只眼
 };
 
 /* ============================================================
@@ -439,15 +446,18 @@ function extractFeat(lm){
       open: Math.sqrt(dw)/Math.sqrt(du)
     };
   }
-  var r = eye(LM.R_OUTER,LM.R_INNER,LM.R_TOP,LM.R_BOT,LM.R_IRIS);
-  var l = eye(LM.L_OUTER,LM.L_INNER,LM.L_TOP,LM.L_BOT,LM.L_IRIS);
-  if(!r||!l) return null;
-  return { ax:(r.ax+l.ax)/2, ay:(r.ay+l.ay)/2, open:Math.min(r.open,l.open) };
+  var a = eye(LM.A_L,LM.A_R,LM.A_TOP,LM.A_BOT,LM.A_IRIS);
+  var b = eye(LM.B_L,LM.B_R,LM.B_TOP,LM.B_BOT,LM.B_IRIS);
+  if(!a||!b) return null;
+  return { ax:(a.ax+b.ax)/2, ay:(a.ay+b.ay)/2, open:Math.min(a.open,b.open) };
 }
 
 function predict(fx,fy){
   if(!Model.a) return null;
-  var x = fx - Model.mean.x;
+  /* 前摄画面左右是反的：玩家看屏幕右侧时，虹膜在画面里往左走。
+     镜像必须在**输入端**做。只把 a1 取反、让输入不动，等于把输出左右颠倒，
+     会把"看左"解成"看右"——实测复测误差从 6px 恶化到 126px。 */
+  var x = (Model.flipX ? -1 : 1) * (fx - Model.mean.x);
   var y = fy - Model.mean.y;
   var v = [1, x, y, x*y];
   var sx=0, sy=0;
@@ -662,7 +672,7 @@ function samplePoint(pt, ms){
 function runCalibration(){
   S.phase = 'calib';
   showScreen('scrCalib');
-  Model.a = null; Model.b = null;
+  Model.a = null; Model.b = null; Model.flipX = false;
   FX.reset(); FY.reset();
   ZONE.active = -1;
   $('calTip').textContent = '请正对镜头，戴上眼镜也可以但要避免反光';
@@ -715,16 +725,34 @@ function runCalibration(){
       if(!sa || !sb){
         throw new Error('校准方程退化——眼动特征动态范围过小，可能信号没被正确捕捉。请正对镜头重试。');
       }
-      /* 增益体检：a1 参考 5.00、b2 参考 6.25（上一版实测 4.82–4.96 / 5.87–6.29）。
-         只做粗判拦截，参考带外的合理值只标记、不阻断——否则换个人就永远过不了校准。 */
+      /* —— 方向：前摄原始帧是未镜像的 ——
+         玩家看向屏幕右侧时，虹膜在画面里其实是往左走的，所以 a1 天然为负。
+         旧版把它当"异常"直接拦下，等于让所有人都不合格。
+         正确做法是把 x 轴镜像回来：把 sx = a0 + a1·x + a2·y + a3·x·y 里的 x 换成 -x，
+         等价于 a1、a3 取反 —— 拟合残差完全不变，只是方向摆正。 */
+      var signFlip = sa[1] < 0;
+      if(signFlip){ sa[1] = -sa[1]; sa[3] = -sa[3]; }
+      Model.flipX = signFlip;   /* 必须在复测之前设好，predict 靠它把输入镜像回来 */
+
+      /* —— 量级：不做硬闸门 ——
+         a1 ≈ 1/(全屏所需的虹膜行程占眼宽的比例)。人眼宽约 30mm，屏幕两端对应的
+         虹膜位移通常只有眼宽的 5%–12%，所以 a1 落在 8–20 才是常态。
+         旧版的 a1∈[2,9] 是照合成数据反推出来的，会把大多数真人挡在门外。
+         真正判得死的只有两件事：特征有没有动态范围、复测误差落不落进容差。 */
       var a1 = sa[1], b2 = sb[2];
-      if(Math.abs(a1) < 2 || Math.abs(a1) > 9 || Math.abs(b2) < 2.5 || Math.abs(b2) > 11){
-        throw new Error('校准增益异常（a1=' + r1(a1) + '，b2=' + r1(b2) +
-          '）。可能是面部离镜头太近/太远或光线骤变，请调整后重试。');
+      var axs = good.map(function(v){ return v.ax; });
+      var span = Math.max.apply(null, axs) - Math.min.apply(null, axs);
+      if(!isFinite(a1) || !isFinite(b2) || Math.abs(a1) < 1.5){
+        throw new Error('校准失败：水平眼动信号过弱（a1=' + r1(a1) + '，跨度 ' + span.toFixed(4) +
+          '）。请正对镜头、整张脸放进取景框中央，眼睛跟绿点时真的转动眼球（不要只转头）。');
+      }
+      if(span < 0.006){
+        throw new Error('校准失败：5 个校准点上虹膜位置几乎没有变化（跨度 ' + span.toFixed(4) +
+          '）。通常是摄像头没对着正脸，或眼睛被刘海、镜框反光挡住。');
       }
       Model.a = sa; Model.b = sb;
       $('calFill').style.width = '70%';
-      return { a1:a1, b2:b2 };
+      return { a1:a1, b2:b2, span:span, signFlip:signFlip };
     }).then(function(gains){
       /* 复测：验证点与校准点错开，误差才不会算成 0 */
       var verFeats = [];
@@ -972,7 +1000,10 @@ function buildReport(){
   L.push('  逐点 px: ' + INSTR.calErrs.map(function(x){ return r0(x); }).join(' / '));
   L.push('  均值 ' + r0(v.mean) + 'px   中位 ' + r0(v.med) + 'px   P95 ' + r0(v.p95) + 'px   最大 ' + r0(v.max) + 'px');
   if(INSTR.calGains){
-    L.push('  增益 a1=' + r1(INSTR.calGains.a1) + '（参考 5.00）  b2=' + r1(INSTR.calGains.b2) + '（参考 6.25）');
+    var g = INSTR.calGains;
+    L.push('  增益 a1=' + r1(g.a1) + '（真人常见 8–20）  b2=' + r1(g.b2));
+    L.push('  水平跨度 Δax=' + g.span.toFixed(4) + '（占眼宽比例，<0.006 视为无信号）' +
+      '　x 轴镜像=' + (g.signFlip ? '已翻转（前摄正常现象）' : '未翻转'));
   }
   L.push('  判定 ' + v.tier);
   L.push('');
@@ -1601,9 +1632,13 @@ $('btnPlay').addEventListener('click', function(){
     b.disabled = false; b.textContent = '玩法灰盒 · 直接试玩';
     if(!S.calibrated()){
       /* 没校准就先校准，校准完直接进游戏 */
-      return runCalibration().then(function(){
+      return runCalibration().then(function(r){
         hideAllScreens();
+        var mm = (r.errs && r.errs.length) ? median(r.errs) : 9999;
         startPlay();
+        /* 校准误差中位已经越过玩法可行域时，硬让玩家用眼动，只会被当成"游戏坏了"。
+           直接给触摸模式，比让他自己去找右上角那个小按钮诚实。 */
+        if(mm > 280) enterDegrade('校准误差中位 ' + r0(mm) + 'px，超出玩法容差');
       });
     }
     hideAllScreens();
