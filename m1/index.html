@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070a10">
+<title>一个眼神杀死你 · M1 真机测量</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#070a10;color:#e8eef7;overflow:hidden;overscroll-behavior:none;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block}
+#cam{position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none}
+.scr{position:fixed;inset:0;z-index:20;background:#070a10;display:flex;flex-direction:column;
+  padding:calc(env(safe-area-inset-top) + 18px) 20px calc(env(safe-area-inset-bottom) + 18px);
+  overflow-y:auto;-webkit-overflow-scrolling:touch}
+.scr.hide{display:none!important}
+h1{font-size:22px;font-weight:600;margin:0 0 4px;letter-spacing:.5px}
+h2{font-size:16px;font-weight:600;margin:18px 0 8px;color:#9fb3cc}
+p{margin:0 0 10px;font-size:14px;line-height:1.65;color:#8c9db3}
+.dim{color:#5d6b7d}
+.btn{display:block;width:100%;padding:16px;margin:8px 0;border:0;border-radius:14px;
+  font-size:17px;font-weight:600;color:#04120e;background:#2fd6a6;cursor:pointer;
+  font-family:inherit;transition:transform .08s}
+.btn:active{transform:scale(.985)}
+.btn.ghost{background:transparent;color:#9fb3cc;border:1px solid #2a3648}
+.btn.red{background:#e8544f;color:#1a0505}
+.btn:disabled{opacity:.4}
+.card{background:#0e141d;border:1px solid #1d2735;border-radius:14px;padding:14px;margin:10px 0}
+.kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:5px 0;border-bottom:1px solid #161f2b}
+.kv:last-child{border-bottom:0}
+.kv b{color:#dfe9f5;font-weight:500;font-variant-numeric:tabular-nums}
+.kv span{color:#7b8b9f}
+textarea{width:100%;height:260px;background:#0a1017;color:#b9cbe0;border:1px solid #1d2735;border-radius:10px;
+  padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;resize:vertical}
+#target{position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;
+  border:3px solid #2fd6a6;box-shadow:0 0 0 8px rgba(47,214,166,.14);z-index:40;display:none;pointer-events:none}
+#target.on{display:block}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 16px);z-index:90;
+  background:#2a1113;border:1px solid #7d2b2b;color:#ffb9b6;padding:14px;border-radius:12px;font-size:13px;
+  line-height:1.6;display:none}
+#toast.on{display:block}
+#toast button{margin-top:10px;width:100%;padding:12px;border:0;border-radius:10px;background:#e8544f;color:#1a0505;
+  font-size:15px;font-weight:600;font-family:inherit}
+.bar{height:6px;background:#141c27;border-radius:3px;overflow:hidden;margin:10px 0}
+.bar i{display:block;height:100%;width:0;background:#2fd6a6;transition:width .15s}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+.tag{display:inline-block;font-size:11px;padding:3px 8px;border-radius:6px;background:#16202c;color:#7f93aa;margin-right:6px}
+.big{font-size:30px;font-weight:600;color:#2fd6a6;font-variant-numeric:tabular-nums}
+#degBtn{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom) + 116px);z-index:30;display:none;
+  padding:10px 14px;border-radius:12px;border:1px solid #7d2b2b;background:rgba(35,14,15,.92);color:#ffb9b6;
+  font-size:12px;font-family:inherit;line-height:1.4}
+#degBtn.on{display:block}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+<video id="cam" playsinline muted autoplay></video>
+<div id="target"></div>
+
+<div class="scr" id="scrHome">
+  <h1>一个眼神杀死你</h1>
+  <p class="dim">M1 灰盒 · 真机误差测量</p>
+  <div class="card" id="homeStatus">
+    <div class="kv"><span>摄像头</span><b id="stCam">未启动</b></div>
+    <div class="kv"><span>虹膜引擎</span><b id="stMp">未启动</b></div>
+    <div class="kv"><span>检测帧率</span><b id="stFps">--</b></div>
+    <div class="kv"><span>眨眼阈值</span><b id="stThr">0.105（默认）</b></div>
+  </div>
+  <button class="btn" id="btnInstr">仪器模式 · 先测数据</button>
+  <button class="btn ghost" id="btnPlay">玩法灰盒 · 直接试玩</button>
+  <p class="dim" style="margin-top:18px;font-size:12px">
+    视频帧只在本机处理，不上传任何数据。测量的数字也只留在这台手机上，需要你自己复制出来。
+  </p>
+</div>
+
+<div class="scr hide" id="scrCalib">
+  <h1 style="font-size:18px">校准</h1>
+  <p id="calTip">等面部入镜…</p>
+  <div class="bar"><i id="calFill"></i></div>
+  <p class="dim" id="calSub" style="font-size:12px"></p>
+  <button class="btn ghost" id="btnCalCancel" style="margin-top:auto">取消</button>
+</div>
+
+<div class="scr hide" id="scrInstr">
+  <h1 style="font-size:18px" id="insTitle">仪器模式</h1>
+  <p id="insTip">准备中…</p>
+  <div class="bar"><i id="insFill"></i></div>
+  <div class="card" id="insLive"></div>
+  <button class="btn ghost" id="btnInsCancel" style="margin-top:auto">中止</button>
+</div>
+
+<div class="scr hide" id="scrReport">
+  <h1 style="font-size:18px">测量报告</h1>
+  <div class="card" id="repSummary"></div>
+  <textarea id="repText" readonly></textarea>
+  <button class="btn" id="btnCopy">复制报告</button>
+  <button class="btn ghost" id="btnRepHome">回首页</button>
+</div>
+
+<div class="scr hide" id="scrEnd">
+  <h1 style="font-size:18px" id="endTitle">一局结束</h1>
+  <div class="card" id="endStats"></div>
+  <p style="margin-top:12px">这一局你的眼睛有多累？</p>
+  <div class="row" id="fatigueRow"></div>
+  <textarea id="endText" readonly style="height:180px;margin-top:12px"></textarea>
+  <button class="btn" id="btnCopyEnd">复制本局数据</button>
+  <button class="btn ghost" id="btnEndHome">回首页</button>
+</div>
+
+<div id="toast"><span id="toastMsg"></span><br><button id="toastBtn">刷新页面</button></div>
+<button id="degBtn">切触摸</button>
+
+<script>
+/* MediaPipe 资源：本地用 ./mp/，部署在 /m1/ 子目录时用 ../mp/，再不行回退 CDN。
+   同源的目的：模型与页面走同一个边缘节点，避开跨境链路中断。
+   注意：这里必须用 Script 标签动态加载，不能用 <script onerror="..."> 属性里的
+   new URL()——内联事件处理器的作用域链上有 document，document.URL 是一个字符串，
+   会把 window.URL 这个构造函数遮住，导致 "URL is not a constructor"，回退链直接失效。 */
+window.__MP_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/';
+window.__MP_BASE = location.pathname.indexOf('/m1/') >= 0 ? '../mp/' : './mp/';
+
+/* Emscripten 胶水执行时会给全局 Module 装一批「已废弃属性」的抛错 getter：
+     if(!Object.getOwnPropertyDescriptor(Module,"arguments")) defineProperty(get(){ abort(...) })
+   之后任何代码再读到 Module.arguments 就立刻 abort，整个 wasm 实例报废。
+   这里预先把这些属性定义成普通数据属性，胶水检测到 descriptor 已存在就会跳过安装。 */
+(function(){
+  var M = window.Module = window.Module || {};
+  ['arguments','thisProgram','preRun','postRun','print','printErr','onRuntimeInitialized']
+  .forEach(function(k){
+    if (!Object.getOwnPropertyDescriptor(M, k)){
+      try { Object.defineProperty(M, k, { configurable:true, writable:true, value:undefined }); } catch(e){}
+    }
+  });
+})();
+
+(function(){
+  var bases = location.pathname.indexOf('/m1/') >= 0 ? ['../mp/','./mp/'] : ['./mp/','../mp/'];
+  bases.push(window.__MP_CDN);
+  var i = 0;
+  function tryNext(){
+    if(i >= bases.length){ window.__MP_FAIL = true; return; }
+    var base = bases[i++];
+    var s = document.createElement('script');
+    s.src = base + 'face_mesh.js';
+    s.crossOrigin = 'anonymous';
+    s.onload  = function(){ window.__MP_BASE = base; window.__MP_OK = true; };
+    s.onerror = function(){ tryNext(); };
+    document.head.appendChild(s);
+  }
+  tryNext();
+})();
+</script>
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   0. 工具
+   ============================================================ */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function now(){ return performance.now(); }
+function wait(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+function median(arr){
+  if(!arr.length) return 0;
+  var s = arr.slice().sort(function(a,b){ return a-b; });
+  var m = Math.floor(s.length/2);
+  return s.length % 2 ? s[m] : (s[m-1]+s[m])/2;
+}
+function pct(arr, p){
+  if(!arr.length) return 0;
+  var s = arr.slice().sort(function(a,b){ return a-b; });
+  var i = clamp((s.length-1) * p, 0, s.length-1);
+  var lo = Math.floor(i), hi = Math.ceil(i);
+  return lo === hi ? s[lo] : s[lo] + (s[hi]-s[lo]) * (i-lo);
+}
+function r1(v){ return Math.round(v*10)/10; }
+function r0(v){ return Math.round(v); }
+function $(id){ return document.getElementById(id); }
+
+/* 最小二乘：解 A x = b，A 为 n×m */
+function solveLS(A, b, m){
+  var n = A.length, M = [], i, j, k;
+  for(i=0;i<m;i++) M.push(new Float64Array(m+1));
+  for(i=0;i<m;i++){
+    for(j=0;j<m;j++){
+      var s=0;
+      for(k=0;k<n;k++) s += A[k][i]*A[k][j];
+      M[i][j]=s;
+    }
+    var t=0;
+    for(k=0;k<n;k++) t += A[k][i]*b[k];
+    M[i][m]=t;
+  }
+  for(i=0;i<m;i++){
+    var mx=i;
+    for(j=i+1;j<m;j++) if(Math.abs(M[j][i])>Math.abs(M[mx][i])) mx=j;
+    if(Math.abs(M[mx][i])<1e-12) return null;
+    var tmp=M[i]; M[i]=M[mx]; M[mx]=tmp;
+    var pv=M[i][i];
+    for(j=i;j<=m;j++) M[i][j]/=pv;
+    for(j=0;j<m;j++){
+      if(j===i) continue;
+      var f=M[j][i];
+      if(f===0) continue;
+      for(k=i;k<=m;k++) M[j][k] -= f*M[i][k];
+    }
+  }
+  var out=[];
+  for(i=0;i<m;i++) out.push(M[i][m]);
+  return out;
+}
+
+/* one-euro：人眼是「注视—眼跳—注视」的离散步进，原始信号直接驱动会抽搐 */
+function OneEuro(mc,beta,dc){ this.mc=mc; this.beta=beta; this.dc=dc; this.xp=null; this.dxp=0; }
+OneEuro.prototype.alpha=function(cut,dt){
+  var tau = 1/(2*Math.PI*cut);
+  return 1/(1 + tau/dt);
+};
+OneEuro.prototype.filter=function(x,dt){
+  if(this.xp===null){ this.xp=x; this.dxp=0; return x; }
+  var dx=(x-this.xp)/dt;
+  var ad=this.alpha(this.dc,dt);
+  this.dxp = this.dxp + ad*(dx-this.dxp);
+  var cut = this.mc + this.beta*Math.abs(this.dxp);
+  var a = this.alpha(cut,dt);
+  this.xp = this.xp + a*(x-this.xp);
+  return this.xp;
+};
+OneEuro.prototype.reset=function(){ this.xp=null; this.dxp=0; };
+
+var FX = new OneEuro(1.1,0.045,1.0);
+var FY = new OneEuro(1.1,0.045,1.0);
+
+/* ============================================================
+   1. 全局状态
+   ============================================================ */
+var S = {
+  phase:'home',          // home|calib|instr|report|play|end
+  camReady:false,
+  mpReady:false,
+  mpDead:false,
+  faceOk:false,
+  detectFps:0,
+  totalFrames:0,
+  blinkFrames:0
+};
+
+var Gaze = {
+  raw:{x:0,y:0,ok:false},
+  filt:{x:0,y:0,ok:false},
+  jitter:0,
+  lostMs:0
+};
+
+var Model = { a:null, b:null, mean:{x:0,y:0} };
+
+/* 眨眼：逐用户阈值，默认沿用上一版 0.105，测量后按基线重算 */
+var BLINK = {
+  thr: 0.105,
+  thrSource: '默认值',
+  openBuf: [],           // 基线采样 {t,v}
+  active: false,
+  startT: 0,
+  events: [],            // {s,e,d}
+  naturalP90: 0
+};
+
+var LM = {
+  R_OUTER:33, R_INNER:133, R_TOP:159, R_BOT:145, R_IRIS:468,
+  L_OUTER:263, L_INNER:362, L_TOP:386, L_BOT:374, L_IRIS:473
+};
+
+/* ============================================================
+   2. 画布
+   ============================================================ */
+var cvs = $('game');
+var ctx = cvs.getContext('2d', { alpha:false });
+var W = 0, H = 0, DPR = 1;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  cvs.width  = Math.floor(W * DPR);
+  cvs.height = Math.floor(H * DPR);
+  cvs.style.width = W + 'px';
+  cvs.style.height = H + 'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 120); });
+resize();
+
+/* ============================================================
+   3. MediaPipe 启动（幂等 + 三层防御）
+   ============================================================ */
+var faceMesh = null;
+var mpBootPromise = null;
+var detectBusy = false;
+var detectCount = 0;
+var fpsT0 = 0;
+
+function waitMpScript(){
+  /* 脚本是动态加载的，可能比用户点按钮慢。没等到就直接报错会误判成"引擎不可用"。 */
+  return new Promise(function(resolve, reject){
+    var t0 = now();
+    (function chk(){
+      if(typeof window.FaceMesh === 'function') return resolve();
+      if(window.__MP_FAIL) return reject(new Error('MediaPipe 脚本全部加载失败（同源与 CDN 均不可达），请检查网络后刷新'));
+      if(now() - t0 > 10000) return reject(new Error('MediaPipe 脚本加载超时，请检查网络后刷新'));
+      setTimeout(chk, 120);
+    })();
+  });
+}
+
+function bootFaceMesh(){
+  if(S.mpReady && faceMesh) return Promise.resolve();
+  if(mpBootPromise) return mpBootPromise;
+  if(S.mpDead) return Promise.reject(new Error('虹膜引擎已停止工作，刷新页面后重试'));
+
+  mpBootPromise = waitMpScript().then(function(){
+    faceMesh = new window.FaceMesh({ locateFile:function(f){ return window.__MP_BASE + f; } });
+    faceMesh.setOptions({
+      maxNumFaces:1, refineLandmarks:true,
+      minDetectionConfidence:0.5, minTrackingConfidence:0.5
+    });
+    faceMesh.onResults(onFace);
+    return faceMesh.initialize();
+  }).then(function(){
+    S.mpReady = true;
+    $('stMp').textContent = '就绪';
+  }).catch(function(e){
+    mpBootPromise = null;
+    var m = (e && e.message) ? e.message : String(e);
+    if(/abort|Module\.|RuntimeError|WebAssembly/i.test(m)){
+      S.mpDead = true;
+      $('stMp').textContent = '初始化失败';
+      throw new Error('虹膜引擎在这台手机上初始化失败（wasm 运行时中断）。刷新可重试一次；仍失败说明机型与引擎不兼容。');
+    }
+    throw e;
+  });
+  return mpBootPromise;
+}
+
+function startCamera(){
+  if(S.camReady && $('cam').srcObject) return Promise.resolve();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    return Promise.reject(new Error('浏览器不支持摄像头调用'));
+  }
+  if(!window.isSecureContext){
+    return Promise.reject(new Error('当前不是 https 安全环境，浏览器禁止调用摄像头'));
+  }
+  return navigator.mediaDevices.getUserMedia({
+    audio:false,
+    video:{ facingMode:'user', width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30,max:30} }
+  }).then(function(stream){
+    var v = $('cam');
+    v.srcObject = stream;
+    return v.play();
+  }).then(function(){
+    S.camReady = true;
+    $('stCam').textContent = '已启动';
+  }, function(err){
+    var n = (err && err.name) || '';
+    if(n === 'NotAllowedError') throw new Error('摄像头权限被拒绝。请在浏览器设置里允许本站访问摄像头，然后刷新页面。');
+    if(n === 'NotFoundError')   throw new Error('没有找到摄像头。');
+    if(n === 'NotReadableError')throw new Error('摄像头被其他应用占用，关掉那个应用后重试。');
+    throw new Error('摄像头启动失败：' + (err && err.message ? err.message : n));
+  });
+}
+
+var pumpRunning = false;
+function pumpDetect(){
+  /* 幂等：重复调用不能起两条检测循环，否则同一帧会被 send 两次，帧率与延迟全部失真 */
+  if(pumpRunning) return;
+  pumpRunning = true;
+  (function tick(){
+    requestAnimationFrame(tick);
+    if(!S.camReady || !S.mpReady || detectBusy) return;
+    var v = $('cam');
+    if(v.readyState < 2 || v.videoWidth === 0) return;
+    detectBusy = true;
+    faceMesh.send({ image:v }).then(function(){
+      detectBusy = false;
+      detectCount++;
+      var dt = now() - fpsT0;
+      if(dt > 700){
+        S.detectFps = Math.round(detectCount * 1000 / dt);
+        detectCount = 0; fpsT0 = now();
+        $('stFps').textContent = S.detectFps + ' fps';
+      }
+    }).catch(function(){ detectBusy = false; });
+  })();
+}
+
+/* 478 点 → 双眼虹膜归一化特征（相对量，抗头动） */
+function extractFeat(lm){
+  function eye(outer, inner, top, bot, iris){
+    var o=lm[outer], i=lm[inner], t=lm[top], b=lm[bot], c=lm[iris];
+    if(!o||!i||!t||!b||!c) return null;
+    var ux=i.x-o.x, uy=i.y-o.y;
+    var wx=b.x-t.x, wy=b.y-t.y;
+    var du=ux*ux+uy*uy, dw=wx*wx+wy*wy;
+    if(du<1e-9||dw<1e-9) return null;
+    return {
+      ax: ((c.x-o.x)*ux + (c.y-o.y)*uy)/du,
+      ay: ((c.x-t.x)*wx + (c.y-t.y)*wy)/dw,
+      open: Math.sqrt(dw)/Math.sqrt(du)
+    };
+  }
+  var r = eye(LM.R_OUTER,LM.R_INNER,LM.R_TOP,LM.R_BOT,LM.R_IRIS);
+  var l = eye(LM.L_OUTER,LM.L_INNER,LM.L_TOP,LM.L_BOT,LM.L_IRIS);
+  if(!r||!l) return null;
+  return { ax:(r.ax+l.ax)/2, ay:(r.ay+l.ay)/2, open:Math.min(r.open,l.open) };
+}
+
+function predict(fx,fy){
+  if(!Model.a) return null;
+  var x = fx - Model.mean.x;
+  var y = fy - Model.mean.y;
+  var v = [1, x, y, x*y];
+  var sx=0, sy=0;
+  for(var i=0;i<4;i++){ sx += v[i]*Model.a[i]; sy += v[i]*Model.b[i]; }
+  return { sx:sx, sy:sy };
+}
+
+/* ============================================================
+   4. 眨眼：检测 + 事件
+   ============================================================ */
+var blinkHooks = null;   // {onEnd:function(dur)}
+
+function onBlinkEnd(dur){
+  if(dur < 80) return;                       // 抖动，丢弃
+  BLINK.events.push({ s:BLINK.startT, e:now(), d:dur });
+  if(BLINK.events.length > 400) BLINK.events.shift();
+  if(blinkHooks && blinkHooks.onEnd) blinkHooks.onEnd(dur);
+}
+
+/* ============================================================
+   5. 三区判定（含 60px 吸附带 / 迟滞）
+   ============================================================ */
+var ZONE = { active:-1, band:60 };
+
+function classifyZone(sx){
+  var zw = W/3;
+  var z = sx < zw ? 0 : (sx < 2*zw ? 1 : 2);
+  if(ZONE.active >= 0 && z !== ZONE.active){
+    /* 迟滞：向上换区要越过边界 +60px，向下换区要越过边界 −60px。
+       这 120px 的滞回带就是方案里的「软吸附带」，用于抑制边界抖动，
+       且只作用于「区」这个离散量，不作用于坐标。 */
+    if(z > ZONE.active){
+      if(sx < (ZONE.active+1)*zw + ZONE.band) z = ZONE.active;
+    } else {
+      if(sx > ZONE.active*zw - ZONE.band) z = ZONE.active;
+    }
+  }
+  ZONE.active = z;
+  return z;
+}
+
+/* ============================================================
+   6. 面部回调：视线管线
+   ============================================================ */
+var recOpen = false;      // 仪器模式采样开关
+var onFaceHooks = null;   // {onSample:function(f, sx, sy)}
+
+function onFace(res){
+  S.totalFrames++;
+  var lms = res.multiFaceLandmarks;
+
+  if(!lms || !lms.length){
+    S.faceOk = false;
+    Gaze.lostMs += 33;
+    return;
+  }
+  S.faceOk = true;
+
+  var f = extractFeat(lms[0]);
+  if(!f) return;
+
+  if(recOpen) BLINK.openBuf.push({ t:now(), v:f.open });
+
+  /* 闭眼：不更新视线（保持上次有效值，否则睁眼瞬间会弹飞） */
+  if(f.open < BLINK.thr){
+    if(!BLINK.active){ BLINK.active = true; BLINK.startT = now(); }
+    S.blinkFrames++;
+    return;
+  }
+
+  if(BLINK.active){
+    BLINK.active = false;
+    onBlinkEnd(now() - BLINK.startT);
+  }
+
+  if(!S.calibrated()) return;
+  var p = predict(f.ax, f.ay);
+  if(!p) return;
+
+  var sx = p.sx * W, sy = p.sy * H;
+  if(!isFinite(sx) || !isFinite(sy)) return;
+  sx = clamp(sx, -W*0.3, W*1.3);
+  sy = clamp(sy, -H*0.3, H*1.3);
+
+  Gaze.raw.x = sx; Gaze.raw.y = sy; Gaze.raw.ok = true;
+
+  var dt = Math.min(0.2, Math.max(0.008, (now() - (onFace._t || now()))/1000));
+  onFace._t = now();
+
+  var fx2 = FX.filter(sx, dt);
+  var fy2 = FY.filter(sy, dt);
+
+  var jx = sx-fx2, jy = sy-fy2;
+  Gaze.jitter = Gaze.jitter*0.88 + Math.sqrt(jx*jx+jy*jy)*0.12;
+
+  Gaze.filt.x = fx2; Gaze.filt.y = fy2; Gaze.filt.ok = true;
+  Gaze.lostMs = 0;
+
+  /* 三区判定：只在玩法与仪器模式下更新，避免影响校准阶段的采样。
+     触摸降级时视线不再驱动选区，否则会与手指抢控制权。 */
+  if((S.phase === 'play' || S.phase === 'instr') && !DEG.on) classifyZone(fx2);
+
+  if(onFaceHooks && onFaceHooks.onSample) onFaceHooks.onSample(f, sx, sy);
+}
+
+S.calibrated = function(){ return !!Model.a; };
+
+/* ============================================================
+   7. 屏幕管理：所有遮罩一次性关闭（上一版就是卡在这里进不去游戏）
+   ============================================================ */
+var SCREENS = ['scrHome','scrCalib','scrInstr','scrReport','scrEnd'];
+
+function hideAllScreens(){
+  SCREENS.forEach(function(id){ $(id).classList.add('hide'); });
+  $('target').classList.remove('on');
+}
+
+function showScreen(id){
+  hideAllScreens();
+  $(id).classList.remove('hide');
+}
+
+function toast(msg, withReload){
+  $('toastMsg').textContent = msg;
+  $('toastBtn').style.display = withReload === false ? 'none' : 'block';
+  $('toast').classList.add('on');
+}
+$('toastBtn').addEventListener('click', function(){ location.reload(); });
+
+function fail(e){
+  var msg = (e && e.message) ? e.message : String(e);
+  S.phase = 'home';
+  showScreen('scrHome');
+  $('degBtn').classList.remove('on');
+  /* 连续 3 次校准失败 → 自动降级，而不是把玩家卡在"进不去" */
+  if(/校准|复测|面部|增益|方程/.test(msg)){
+    DEG.calFails++;
+    if(DEG.calFails >= 3){
+      enterDegrade('连续 ' + DEG.calFails + ' 次校准失败');
+      return;
+    }
+  }
+  toast(msg, /引擎|wasm|初始化/.test(msg));
+}
+
+/* ============================================================
+   8. 校准：5 点校准 + 5 点复测（两组点错开）
+   ============================================================ */
+/* 校准点 */
+var CAL_PTS = [
+  { x:0.16, y:0.16 }, { x:0.84, y:0.16 }, { x:0.50, y:0.50 },
+  { x:0.16, y:0.84 }, { x:0.84, y:0.84 }
+];
+/* 复测点：与校准点全部错开。重合会算出 0 误差的假精度——上一版真实犯过的错。 */
+var VER_PTS = [
+  { x:0.34, y:0.30 }, { x:0.66, y:0.30 }, { x:0.50, y:0.70 },
+  { x:0.22, y:0.58 }, { x:0.78, y:0.58 }
+];
+
+var calBuf = [];
+var calActive = false;
+
+function showTarget(nx, ny){
+  var t = $('target');
+  t.style.left = Math.round(nx*W) + 'px';
+  t.style.top  = Math.round(ny*H) + 'px';
+  t.classList.add('on');
+}
+function hideTarget(){ $('target').classList.remove('on'); }
+
+function sleepUntilFace(){
+  return new Promise(function(resolve){
+    var t0 = now();
+    (function chk(){
+      if(S.faceOk) return resolve();
+      if(now()-t0 > 20000) return resolve();
+      setTimeout(chk, 150);
+    })();
+  });
+}
+
+/* 采集某个点的虹膜特征中位数 */
+function samplePoint(pt, ms){
+  return wait(620).then(function(){
+    showTarget(pt.x, pt.y);
+    calBuf = [];
+    calActive = true;
+    var t0 = now();
+    return new Promise(function(res){
+      (function tick(){
+        if(now()-t0 >= ms){ calActive = false; return res(); }
+        setTimeout(tick, 50);
+      })();
+    });
+  }).then(function(){
+    calActive = false;
+    if(calBuf.length < 3) return null;
+    var axs = calBuf.map(function(v){ return v.ax; });
+    var ays = calBuf.map(function(v){ return v.ay; });
+    return { ax:median(axs), ay:median(ays), tx:pt.x, ty:pt.y, n:calBuf.length };
+  });
+}
+
+function runCalibration(){
+  S.phase = 'calib';
+  showScreen('scrCalib');
+  Model.a = null; Model.b = null;
+  FX.reset(); FY.reset();
+  ZONE.active = -1;
+  $('calTip').textContent = '请正对镜头，戴上眼镜也可以但要避免反光';
+  $('calSub').textContent = '';
+
+  return sleepUntilFace().then(function(){
+    if(!S.faceOk){ throw new Error('没有检测到面部。请确认前置摄像头对着正脸、光线充足。'); }
+    $('calTip').textContent = '校准中，眼睛跟着绿点走';
+
+    var calFeats = [];
+    var chain = Promise.resolve();
+    CAL_PTS.forEach(function(pt, i){
+      chain = chain.then(function(){
+        $('calSub').textContent = '校准点 ' + (i+1) + ' / ' + CAL_PTS.length;
+        $('calFill').style.width = ((i)/CAL_PTS.length*70) + '%';
+        return samplePoint(pt, 1100).then(function(r){ if(r) calFeats.push(r); });
+      });
+    });
+
+    return chain.then(function(){
+      hideTarget();
+      var good = calFeats.filter(function(v){ return v; });
+      if(good.length < 4){
+        throw new Error('有效校准点不足（' + good.length + '/5）。请正脸入镜、光线充足、不要戴反光眼镜。');
+      }
+
+      Model.mean.x = good.reduce(function(s,v){ return s+v.ax; },0) / good.length;
+      Model.mean.y = good.reduce(function(s,v){ return s+v.ay; },0) / good.length;
+
+      var A=[], bx=[], by=[];
+      good.forEach(function(g){
+        var x=g.ax-Model.mean.x, y=g.ay-Model.mean.y;
+        A.push([1,x,y,x*y]); bx.push(g.tx); by.push(g.ty);
+      });
+      var sa = solveLS(A,bx,4), sb = solveLS(A,by,4);
+      if(!sa || !sb){
+        throw new Error('校准方程退化——眼动特征动态范围过小，可能信号没被正确捕捉。请正对镜头重试。');
+      }
+      /* 增益体检：a1 参考 5.00、b2 参考 6.25（上一版实测 4.82–4.96 / 5.87–6.29）。
+         只做粗判拦截，参考带外的合理值只标记、不阻断——否则换个人就永远过不了校准。 */
+      var a1 = sa[1], b2 = sb[2];
+      if(Math.abs(a1) < 2 || Math.abs(a1) > 9 || Math.abs(b2) < 2.5 || Math.abs(b2) > 11){
+        throw new Error('校准增益异常（a1=' + r1(a1) + '，b2=' + r1(b2) +
+          '）。可能是面部离镜头太近/太远或光线骤变，请调整后重试。');
+      }
+      Model.a = sa; Model.b = sb;
+      $('calFill').style.width = '70%';
+      return { a1:a1, b2:b2 };
+    }).then(function(gains){
+      /* 复测：验证点与校准点错开，误差才不会算成 0 */
+      var verFeats = [];
+      var c2 = Promise.resolve();
+      VER_PTS.forEach(function(pt, i){
+        c2 = c2.then(function(){
+          $('calSub').textContent = '复测点 ' + (i+1) + ' / ' + VER_PTS.length;
+          $('calFill').style.width = (70 + (i+1)/VER_PTS.length*30) + '%';
+          return samplePoint(pt, 900).then(function(r){ if(r) verFeats.push(r); });
+        });
+      });
+      return c2.then(function(){
+        hideTarget();
+        var errs = [];
+        verFeats.forEach(function(v){
+          var p = predict(v.ax, v.ay);
+          if(!p) return;
+          var ex = (p.sx - v.tx) * W;
+          var ey = (p.sy - v.ty) * H;
+          errs.push(Math.sqrt(ex*ex + ey*ey));
+        });
+        return { gains:gains, errs:errs };
+      });
+    });
+  });
+}
+
+/* ============================================================
+   9. 仪器模式：五项测量
+   ============================================================ */
+var INSTR = null;
+
+function newInstr(){
+  return {
+    calGains:null,
+    calErrs:[],          // 5 点复测误差 px
+    jitterStd:0, jitterP2P:0, jitterMaxJump:0,
+    zoneTrials:[],       // {target, got, ms}
+    blinkHist:null, blinkCount:0, blinkMed:0, blinkP90:0,
+    openP50:0, openThr:0,
+    startedAt:now()
+  };
+}
+
+/* 第二步：静视抖动 10 秒 */
+function measureJitter(){
+  return new Promise(function(resolve){
+    var xs=[], ys=[], jumps=[], last=null, t0=now();
+    onFaceHooks = { onSample:function(f, sx, sy){
+      xs.push(sx); ys.push(sy);
+      if(last){ jumps.push(Math.abs(sx-last.sx)); }
+      last = { sx:sx, sy:sy };
+    }};
+    $('insTip').textContent = '第二步：盯着屏幕正中央的十字，不要动，保持 10 秒';
+    (function tick(){
+      var el = (now()-t0)/1000;
+      $('insFill').style.width = Math.min(100, el/10*100) + '%';
+      $('insLive').innerHTML = '<div class="kv"><span>已采样</span><b>' + xs.length + ' 帧</b></div>' +
+        '<div class="kv"><span>剩余</span><b>' + Math.max(0, r0(10-el)) + ' 秒</b></div>';
+      if(el >= 10){
+        onFaceHooks = null;
+        var mx = xs.reduce(function(s,v){ return s+v; },0)/Math.max(1,xs.length);
+        var my = ys.reduce(function(s,v){ return s+v; },0)/Math.max(1,ys.length);
+        var vx=0, vy=0;
+        xs.forEach(function(v){ vx += (v-mx)*(v-mx); });
+        ys.forEach(function(v){ vy += (v-my)*(v-my); });
+        INSTR.jitterStd = Math.sqrt((vx+vy)/Math.max(1,xs.length*2));
+        INSTR.jitterP2P = Math.max.apply(null, xs.concat(ys)) - Math.min.apply(null, xs.concat(ys));
+        INSTR.jitterMaxJump = jumps.length ? Math.max.apply(null, jumps) : 0;
+        return resolve();
+      }
+      setTimeout(tick, 100);
+    })();
+  });
+}
+
+/* 第三步：三区判定准确率，30 次 */
+function measureZones(){
+  return new Promise(function(resolve){
+    var i = 0, target = -1, t0 = 0, latched = false;
+    $('insTip').textContent = '第三步：屏幕会闪出青色区，把视线移到那一区';
+
+    function next(){
+      if(i >= 30){
+        onFaceHooks = null;
+        return resolve();
+      }
+      target = Math.floor(Math.random()*3);
+      latched = false;
+      t0 = now();
+      $('insFill').style.width = (i/30*100) + '%';
+      (function tick(){
+        var el = now()-t0;
+        var got = ZONE.active;
+        $('insLive').innerHTML = '<div class="kv"><span>第几次</span><b>' + (i+1) + ' / 30</b></div>' +
+          '<div class="kv"><span>目标区</span><b>' + '左中右'[target] + '</b></div>' +
+          '<div class="kv"><span>当前判定</span><b>' + (got<0?'--':'左中右'[got]) + '</b></div>';
+        if(!latched && got === target){
+          latched = true;
+          INSTR.zoneTrials.push({ target:target, got:got, ms:Math.round(el) });
+          return setTimeout(function(){ i++; next(); }, 260);
+        }
+        if(el >= 1600){
+          INSTR.zoneTrials.push({ target:target, got:got, ms:-1 });
+          return setTimeout(function(){ i++; next(); }, 120);
+        }
+        setTimeout(tick, 40);
+      })();
+    }
+    onFaceHooks = null;
+    next();
+  });
+}
+
+/* 第四步：自然眨眼基线 30 秒 */
+function measureBlinkBaseline(){
+  return new Promise(function(resolve){
+    var t0 = now();
+    BLINK.openBuf = [];
+    recOpen = true;
+    $('insTip').textContent = '第四步：自然地看着屏幕，正常眨眼，30 秒。不要刻意控制。';
+    (function tick(){
+      var el = (now()-t0)/1000;
+      $('insFill').style.width = Math.min(100, el/30*100) + '%';
+      $('insLive').innerHTML = '<div class="kv"><span>已采集</span><b>' + BLINK.openBuf.length + ' 帧</b></div>' +
+        '<div class="kv"><span>剩余</span><b>' + Math.max(0, r0(30-el)) + ' 秒</b></div>';
+      if(el >= 30){
+        recOpen = false;
+        var vals = BLINK.openBuf.map(function(o){ return o.v; });
+        var p50 = pct(vals, 0.50);
+        var p5  = pct(vals, 0.05);
+        INSTR.openP50 = p50;
+        /* 阈值取睁眼基线的 55%，夹在 0.05–0.16 之间。这是逐用户标定的核心。 */
+        var thr = clamp(p50*0.55, 0.05, 0.16);
+        INSTR.openThr = thr;
+        BLINK.thr = thr;
+        BLINK.thrSource = '基线标定（睁眼 P50=' + r1(p50*1000)/1000 + '）';
+
+        /* 用新阈值重扫 open 序列，得到眨眼事件与时长分布 */
+        var evs = [], inB = false, st = 0, lastT = 0;
+        BLINK.openBuf.forEach(function(o){
+          if(o.v < thr){
+            if(!inB){ inB = true; st = o.t; }
+          } else {
+            if(inB){ inB = false; var d = o.t - st; if(d >= 40) evs.push(d); }
+          }
+          lastT = o.t;
+        });
+        if(inB) evs.push(lastT - st);
+
+        var hist = { '<80':0, '80-120':0, '120-200':0, '200-400':0, '>400':0 };
+        evs.forEach(function(d){
+          if(d < 80) hist['<80']++;
+          else if(d < 120) hist['80-120']++;
+          else if(d < 200) hist['120-200']++;
+          else if(d < 400) hist['200-400']++;
+          else hist['>400']++;
+        });
+        INSTR.blinkHist = hist;
+        INSTR.blinkCount = evs.length;
+        INSTR.blinkMed = median(evs);
+        INSTR.blinkP90 = pct(evs, 0.90);
+        BLINK.naturalP90 = INSTR.blinkP90;
+        BLINK.events = [];
+        $('stThr').textContent = BLINK.thr.toFixed(4) + '（基线标定）';
+        return resolve();
+      }
+      setTimeout(tick, 100);
+    })();
+  });
+}
+
+/* 汇总：给判断 */
+function instrVerdict(){
+  var e = INSTR.calErrs;
+  if(!e.length) return { mean:0, med:0, p95:0, max:0, tier:'无数据', needDegrade:true };
+  var mean = e.reduce(function(s,v){ return s+v; },0)/e.length;
+  var med  = median(e);
+  var p95  = pct(e, 0.95);
+  var max  = Math.max.apply(null, e);
+  var tier, need;
+  if(mean <= 200){ tier = '≤200px · 可继续推进'; need = false; }
+  else if(mean <= 280){ tier = '200–280px · 擦边上限，建议保留降级'; need = true; }
+  else { tier = '>280px · 超出方案可行域'; need = true; }
+  return { mean:mean, med:med, p95:p95, max:max, tier:tier, needDegrade:need };
+}
+
+function zoneStats(){
+  var t = INSTR.zoneTrials;
+  if(!t.length) return { acc:0, n:0, lat:0, cm:[[0,0,0],[0,0,0],[0,0,0]], miss:0 };
+  var cm = [[0,0,0],[0,0,0],[0,0,0]];
+  var hit=0, lat=[], miss=0;
+  t.forEach(function(r){
+    var g = r.got < 0 ? -1 : r.got;
+    if(g >= 0) cm[r.target][g]++;
+    if(g === r.target){ hit++; if(r.ms >= 0) lat.push(r.ms); }
+    else miss++;
+  });
+  return { acc:hit/t.length, n:t.length, lat: lat.length? median(lat):-1, cm:cm, miss:miss };
+}
+
+function buildReport(){
+  var v = instrVerdict();
+  var z = zoneStats();
+  var L = [];
+  L.push('《一个眼神杀死你》M1 真机测量报告');
+  L.push('时间 ' + new Date().toLocaleString('zh-CN'));
+  L.push('设备 ' + navigator.userAgent);
+  L.push('视口 ' + W + '×' + H + ' (DPR ' + DPR + ')');
+  L.push('');
+  L.push('【1 校准误差】复测 ' + INSTR.calErrs.length + ' 点（与校准点错开）');
+  L.push('  逐点 px: ' + INSTR.calErrs.map(function(x){ return r0(x); }).join(' / '));
+  L.push('  均值 ' + r0(v.mean) + 'px   中位 ' + r0(v.med) + 'px   P95 ' + r0(v.p95) + 'px   最大 ' + r0(v.max) + 'px');
+  if(INSTR.calGains){
+    L.push('  增益 a1=' + r1(INSTR.calGains.a1) + '（参考 5.00）  b2=' + r1(INSTR.calGains.b2) + '（参考 6.25）');
+  }
+  L.push('  判定 ' + v.tier);
+  L.push('');
+  L.push('【2 静视抖动】10 秒');
+  L.push('  标准差 ' + r1(INSTR.jitterStd) + 'px   峰峰值 ' + r0(INSTR.jitterP2P) + 'px   单帧最大跳变 ' + r0(INSTR.jitterMaxJump) + 'px');
+  L.push('');
+  L.push('【3 三区判定】' + z.n + ' 次，命中 ' + Math.round(z.acc*100) + '%，判定延迟中位 ' + z.lat + 'ms');
+  L.push('  混淆矩阵（行=目标 左/中/右，列=判定 左/中/右）');
+  z.cm.forEach(function(row, i){
+    L.push('   ' + '左中右'[i] + '  ' + row.join('  '));
+  });
+  L.push('');
+  L.push('【4 自然眨眼基线】30 秒，共 ' + INSTR.blinkCount + ' 次，中位 ' + r0(INSTR.blinkMed) + 'ms，P90 ' + r0(INSTR.blinkP90) + 'ms');
+  if(INSTR.blinkHist){
+    L.push('  时长分布 <80:' + INSTR.blinkHist['<80'] + '  80-120:' + INSTR.blinkHist['80-120'] +
+      '  120-200:' + INSTR.blinkHist['120-200'] + '  200-400:' + INSTR.blinkHist['200-400'] +
+      '  >400:' + INSTR.blinkHist['>400']);
+  }
+  L.push('  睁眼基线 P50 ' + INSTR.openP50.toFixed(4) + ' → 本机眨眼阈值 ' + INSTR.openThr.toFixed(4));
+  L.push('');
+  L.push('【5 结论】');
+  L.push('  ' + v.tier);
+  L.push('  是否需降级模式兜底：' + (v.needDegrade ? '是' : '否'));
+  L.push('  自然眨眼 P90 = ' + r0(INSTR.blinkP90) + 'ms，此值用于标记「可能非意图处决」');
+  L.push('');
+  L.push('—— 以上数据全部在本机计算，未上传 ——');
+  return L.join('\n');
+}
+
+function showReport(){
+  var v = instrVerdict();
+  var z = zoneStats();
+  var cls = v.mean <= 200 ? '#2fd6a6' : (v.mean <= 280 ? '#e8b84b' : '#e8544f');
+  $('repSummary').innerHTML =
+    '<div style="font-size:12px;color:#7b8b9f;margin-bottom:6px">校准误差均值</div>' +
+    '<div class="big" style="color:' + cls + '">' + r0(v.mean) + '<span style="font-size:15px"> px</span></div>' +
+    '<div class="kv" style="margin-top:8px"><span>判定</span><b style="color:' + cls + '">' + v.tier + '</b></div>' +
+    '<div class="kv"><span>三区命中率</span><b>' + Math.round(z.acc*100) + '%</b></div>' +
+    '<div class="kv"><span>静视抖动</span><b>' + r1(INSTR.jitterStd) + ' px</b></div>' +
+    '<div class="kv"><span>自然眨眼 P90</span><b>' + r0(INSTR.blinkP90) + ' ms</b></div>' +
+    '<div class="kv"><span>本机眨眼阈值</span><b>' + INSTR.openThr.toFixed(3) + '</b></div>';
+  $('repText').value = buildReport();
+  S.phase = 'report';
+  showScreen('scrReport');
+}
+
+/* ============================================================
+   10. 玩法灰盒
+   ============================================================ */
+var P = {
+  chargeRate: 220,      // +/s  不可调
+  chargeMax: 100,
+  decay: 140,           // −/s
+  blindRate: 110,       // 盲者带标记时的半速
+  execMs: 200,          // 处决阈值  不可调
+  shieldMs: 120,        // 护盾阈值  不可调
+  telegraph: 500,       // 前摇 ms（难度旋钮）
+  enemySpeed: 85,       // px/s
+  spawnGap: 3000,       // ms
+  runMs: 75000,
+  hp: 3
+};
+
+var GM = null;
+
+/* 降级模式：眼动精度不够时的兜底。玩法逻辑完全不变，只把「视点选三区」
+   换成「手指点三区」，闭眼处决与护盾照旧走眨眼。这不是失败路径，是产品形态之一。 */
+var DEG = { on:false, reason:'', calFails:0, jitterT:0 };
+
+function enterDegrade(reason){
+  if(DEG.on) return;
+  DEG.on = true;
+  DEG.reason = reason;
+  $('degBtn').textContent = '用眼动';
+  $('degBtn').classList.add('on');
+  /* 对局中不用 toast，它会遮住整个下半屏，改成 HUD 顶部小字提示 */
+  if(S.phase !== 'play') toast('已切到触摸模式：' + reason + '。点屏幕选目标，闭眼照旧处决。');
+}
+function exitDegrade(){
+  DEG.on = false;
+  DEG.reason = '';
+  $('degBtn').textContent = '切触摸';
+  if(S.phase !== 'play') $('degBtn').classList.remove('on');
+}
+function toggleDegrade(){
+  if(DEG.on) exitDegrade(); else enterDegrade('玩家手动切换');
+}
+
+function newGame(){
+  return {
+    on:false, t0:0, elapsed:0,
+    hp:P.hp, kills:0, blocked:0, hits:0, missed:0,
+    enemies:[], nextSpawn:0, spawnGap:P.spawnGap,
+    blackout:0, flash:0,
+    restDone:false,
+    blinkLog:[], execLog:[], nonIntent:0, execTotal:0,
+    lastLockBlip:0
+  };
+}
+
+function playGeom(){
+  var hud = 104;
+  return { hud:hud, attackY:H-hud-46, spawnY:-26, zw:W/3 };
+}
+
+function spawnEnemy(){
+  var g = playGeom();
+  var isBlind = Math.random() < 0.3;
+  var z = Math.floor(Math.random()*3);
+  var gz = (GM && GM.enemies) || [];
+  /* 避免同一区同时挤 3 个以上 */
+  var sameZone = gz.filter(function(e){ return e.zone === z && e.state === 'walk'; }).length;
+  if(sameZone >= 2){ z = (z+1)%3; }
+  GM.enemies.push({
+    zone:z, y:g.spawnY, cd:0, lock:false, blind:isBlind, mark:0,
+    state:'walk', tel:0, telStart:0
+  });
+}
+
+function zoneOfEnemy(e, g){ return e.zone; }
+
+function startPlay(){
+  GM = newGame();
+  GM.on = true;
+  GM.t0 = now();
+  GM.nextSpawn = 1200;
+  ZONE.active = -1;
+  S.phase = 'play';
+  hideAllScreens();
+  $('degBtn').classList.add('on');
+  $('degBtn').textContent = DEG.on ? '用眼动' : '切触摸';
+  DEG.jitterT = 0;
+  startAudio();
+  blinkHooks = {
+    onEnd:function(dur){
+      if(!GM || !GM.on) return;
+      GM.blinkLog.push({ t: now()-GM.t0, d: dur });
+      if(dur >= P.execMs) doExecute(dur);
+      if(dur >= P.shieldMs) GM.lastShield = { s: now()-dur, e: now() };
+      /* 声标记：每次有效闭眼给盲者 0.8s 可凝视窗口 */
+      if(dur >= P.execMs){
+        GM.enemies.forEach(function(e){ if(e.blind && e.state === 'walk') e.mark = 800; });
+        GM.blackout = 220;
+      } else {
+        GM.blackout = 140;
+      }
+      GM.flash = 60;
+    }
+  };
+}
+
+function doExecute(dur){
+  var g = playGeom();
+  var locked = GM.enemies.filter(function(e){ return e.lock && e.state === 'walk'; });
+  if(!locked.length) return;
+  /* 「可能非意图」：闭眼时长落在自然眨眼 P90 以内 → 与自然眨眼无法区分 */
+  var suspect = BLINK.naturalP90 > 0 && dur <= BLINK.naturalP90;
+  locked.forEach(function(e){
+    e.state = 'dead';
+    GM.kills++;
+  });
+  GM.execTotal += locked.length;
+  if(suspect) GM.nonIntent += locked.length;
+  GM.execLog.push({ t:now()-GM.t0, n:locked.length, dur:Math.round(dur), suspect:suspect });
+  sfx('exec');
+}
+
+function endPlay(reason){
+  if(!GM || !GM.on) return;
+  GM.on = false;
+  blinkHooks = null;
+  stopAudio();
+  S.phase = 'end';
+  var secs = Math.round((now()-GM.t0)/1000);
+  var nonIntentRate = GM.execTotal ? GM.nonIntent/GM.execTotal : 0;
+  $('endTitle').textContent = reason === 'time' ? '时限到' : (reason === 'hp' ? '你被碰到了' : '已结束');
+  $('endStats').innerHTML =
+    '<div class="kv"><span>击杀</span><b>' + GM.kills + '</b></div>' +
+    '<div class="kv"><span>挡下</span><b>' + GM.blocked + '</b></div>' +
+    '<div class="kv"><span>受伤</span><b>' + GM.hits + '</b></div>' +
+    '<div class="kv"><span>漏杀（碰到底线）</span><b>' + GM.missed + '</b></div>' +
+    '<div class="kv"><span>用时</span><b>' + secs + ' 秒</b></div>' +
+    '<div class="kv"><span>输入模式</span><b>' + (DEG.on ? '触摸降级' : '眼动') + '</b></div>' +
+    '<div class="kv"><span>闭眼事件</span><b>' + GM.blinkLog.length + '</b></div>' +
+    '<div class="kv"><span>可能非意图处决</span><b>' + Math.round(nonIntentRate*100) + '%</b></div>';
+  $('endText').value = playReport(secs, nonIntentRate);
+  buildFatigue();
+  showScreen('scrEnd');
+}
+
+function playReport(secs, nonIntentRate){
+  var L = [];
+  L.push('《一个眼神杀死你》M1 玩法一局');
+  L.push('时间 ' + new Date().toLocaleString('zh-CN'));
+  L.push('设备 ' + navigator.userAgent);
+  L.push('击杀 ' + GM.kills + '　挡下 ' + GM.blocked + '　受伤 ' + GM.hits + '　漏杀 ' + GM.missed);
+  L.push('用时 ' + secs + ' 秒　闭眼事件 ' + GM.blinkLog.length + ' 次');
+  L.push('处决总数 ' + GM.execTotal + '　可能非意图 ' + GM.nonIntent +
+    '（' + Math.round(nonIntentRate*100) + '%）');
+  L.push('本机眨眼阈值 ' + BLINK.thr.toFixed(4) + '　自然眨眼 P90 ' + r0(BLINK.naturalP90) + 'ms');
+  L.push('本局输入模式 ' + (DEG.on ? '触摸降级（原因：' + DEG.reason + '）' : '眼动'));
+  if(!BLINK.naturalP90){
+    L.push('【注意】本局前没有跑过眨眼基线，所以「可能非意图」用的 P90=0，');
+    L.push('       这一项恒为 0，不具备参考价值。要拿到这个数，先去跑一遍仪器模式。');
+  }
+  var ds = GM.blinkLog.map(function(b){ return b.d; });
+  if(ds.length){
+    L.push('闭眼时长 中位 ' + r0(median(ds)) + 'ms　P90 ' + r0(pct(ds,0.9)) + 'ms　最长 ' + r0(Math.max.apply(null,ds)) + 'ms');
+  }
+  L.push('');
+  L.push('非意图处决占比判据：>30% 说明处决阈值需要上调');
+  L.push('—— 以上数据全部在本机计算，未上传 ——');
+  return L.join('\n');
+}
+
+function buildFatigue(){
+  var row = $('fatigueRow');
+  row.innerHTML = '';
+  for(var i=1;i<=5;i++){
+    (function(v){
+      var b = document.createElement('button');
+      b.className = 'btn ghost';
+      b.style.padding = '14px 0';
+      b.textContent = v;
+      b.addEventListener('click', function(){
+        var extra = '\n主观疲劳分 ' + v + ' / 5（1=轻松 5=撑不住）';
+        $('endText').value += extra;
+        Array.prototype.forEach.call(row.children, function(c){ c.style.borderColor = '#2a3648'; });
+        b.style.borderColor = '#2fd6a6';
+      });
+      row.appendChild(b);
+    })(i);
+  }
+}
+
+/* ---- 玩法渲染 ---- */
+function renderPlay(dt){
+  var g = playGeom();
+  ctx.fillStyle = '#070a10';
+  ctx.fillRect(0,0,W,H);
+
+  /* 三区底 */
+  for(var z=0;z<3;z++){
+    var x0 = z*g.zw;
+    var act = (ZONE.active === z);
+    ctx.fillStyle = act ? 'rgba(47,214,166,0.10)' : 'rgba(255,255,255,0.012)';
+    ctx.fillRect(x0+1, 0, g.zw-2, H-g.hud);
+    ctx.strokeStyle = 'rgba(120,150,180,0.10)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0,0); ctx.lineTo(x0,H-g.hud); ctx.stroke();
+    /* 攻击线 */
+    ctx.strokeStyle = 'rgba(232,84,79,0.22)';
+    ctx.setLineDash([6,8]);
+    ctx.beginPath(); ctx.moveTo(x0+6, g.attackY); ctx.lineTo(x0+g.zw-6, g.attackY); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /* 敌人 */
+  GM.enemies.forEach(function(e){
+    if(e.state === 'dead') return;
+    var cx = e.zone*g.zw + g.zw/2;
+    var charged = clamp(e.cd/P.chargeMax, 0, 1);
+
+    if(e.state === 'telegraph'){
+      var k = 1 - (now()-e.telStart)/P.telegraph;
+      ctx.fillStyle = 'rgba(232,84,79,' + (0.10 + 0.22*Math.max(0,k)) + ')';
+      ctx.fillRect(e.zone*g.zw, 0, g.zw, H-g.hud);
+    }
+
+    /* 蓄力弧 */
+    if(charged > 0.02 && !e.lock){
+      ctx.strokeStyle = 'rgba(47,214,166,0.85)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, e.y, 20, -Math.PI/2, -Math.PI/2 + Math.PI*2*charged);
+      ctx.stroke();
+    }
+
+    /* 本体 */
+    var r = 13;
+    ctx.beginPath();
+    ctx.arc(cx, e.y, r, 0, Math.PI*2);
+    if(e.lock){
+      var pulse = 0.5 + 0.5*Math.sin(now()/90);
+      ctx.fillStyle = 'rgba(232,84,79,' + (0.45+0.3*pulse) + ')';
+      ctx.fill();
+      ctx.strokeStyle = '#ff8a85';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, e.y, r+7, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(232,84,79,' + (0.25+0.45*pulse) + ')';
+      ctx.setLineDash([4,5]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle = e.blind ? '#141b24' : '#1b2530';
+      ctx.fill();
+      ctx.strokeStyle = e.blind
+        ? (e.mark>0 ? '#2fd6a6' : '#4a5766')
+        : '#7d93a8';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      if(e.blind){
+        ctx.fillStyle = e.mark>0 ? 'rgba(47,214,166,0.85)' : 'rgba(90,105,122,0.7)';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(e.mark>0 ? '声' : '盲', cx, e.y+3.5);
+      }
+    }
+  });
+
+  /* HUD */
+  var hy = H - g.hud;
+  ctx.fillStyle = '#0b1119';
+  ctx.fillRect(0, hy, W, g.hud);
+  ctx.strokeStyle = '#182231';
+  ctx.beginPath(); ctx.moveTo(0,hy); ctx.lineTo(W,hy); ctx.stroke();
+
+  var labels = ['左','中','右'];
+  for(var z2=0;z2<3;z2++){
+    var bx = z2*g.zw + 18, bw = g.zw - 36;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(bx, hy+34, bw, 8);
+    var best = 0;
+    GM.enemies.forEach(function(e){
+      if(e.zone === z2 && e.state !== 'dead' && !e.lock) best = Math.max(best, e.cd/P.chargeMax);
+    });
+    var anyLock = GM.enemies.some(function(e){ return e.zone===z2 && e.lock && e.state!=='dead'; });
+    ctx.fillStyle = anyLock ? '#e8544f' : '#2fd6a6';
+    ctx.fillRect(bx, hy+34, bw*clamp(best,0,1), 8);
+    ctx.fillStyle = anyLock ? '#ff8a85' : '#5d6b7d';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(labels[z2], bx+bw/2, hy+26);
+  }
+
+  /* 生命 & 计数 */
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#e8eef7';
+  ctx.font = '600 15px sans-serif';
+  ctx.fillText('♥ ' + GM.hp, 18, hy+72);
+  ctx.fillStyle = '#5d6b7d';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('击杀 ' + GM.kills + '　挡 ' + GM.blocked, 70, hy+72);
+
+  var left = Math.max(0, P.runMs - (now()-GM.t0));
+  ctx.textAlign = 'right';
+  ctx.fillStyle = left < 10000 ? '#e8544f' : '#5d6b7d';
+  ctx.fillText(r0(left/1000) + 's', W-18, hy+72);
+
+  if(DEG.on){
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffb9b6';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('触摸模式 · 点屏幕选目标', W/2, 24);
+  }
+
+  /* 闭眼黑幕 + 眼底红晕 */
+  if(GM.blackout > 0 || BLINK.active){
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,W,H);
+    if(GM.flash > 0){
+      ctx.fillStyle = 'rgba(120,10,10,' + (GM.flash/60*0.55) + ')';
+      ctx.fillRect(0,0,W,H);
+    }
+  }
+
+  /* 养神节拍 */
+  if(GM.blackout > 600){
+    ctx.fillStyle = 'rgba(0,0,0,0.9)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = 'rgba(232,238,247,0.5)';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('闭眼养神', W/2, H/2);
+  }
+
+  if(!S.calibrated()){
+    ctx.fillStyle = 'rgba(232,238,247,0.75)';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('未校准 — 请先回首页做校准', W/2, H/2);
+  }
+}
+
+function stepPlay(dt){
+  var g = playGeom();
+  var t = now();
+
+  /* 养神节拍：45% 处触发一次，2 秒 */
+  if(!GM.restDone && GM.elapsed > P.runMs*0.45){
+    GM.restDone = true;
+    GM.blackout = 2000;
+    sfx('breath');
+  }
+  if(GM.blackout > 0) GM.blackout -= dt*1000;
+  if(GM.flash > 0) GM.flash -= dt*1000;
+
+  if(GM.blackout > 0) return;
+
+  /* 自动降级判定：抖动持续超 280px，或面部连续丢失超 20 秒 */
+  if(!DEG.on){
+    if(Gaze.jitter > 280){
+      DEG.jitterT += dt*1000;
+      if(DEG.jitterT > 2000) enterDegrade('视线抖动 ' + r0(Gaze.jitter) + 'px，超过 280px 上限');
+    } else {
+      DEG.jitterT = Math.max(0, DEG.jitterT - dt*600);
+    }
+    if(Gaze.lostMs > 20000) enterDegrade('面部连续丢失超过 20 秒');
+  }
+
+  /* 区充电 */
+  var z = ZONE.active;
+  GM.enemies.forEach(function(e){
+    if(e.state !== 'walk') return;
+    if(e.mark > 0) e.mark -= dt*1000;
+    if(e.zone === z){
+      var rate = e.blind ? (e.mark > 0 ? P.blindRate : 0) : P.chargeRate;
+      e.cd = Math.min(P.chargeMax, e.cd + rate*dt);
+    } else {
+      e.cd = Math.max(0, e.cd - P.decay*dt);
+    }
+    if(e.cd >= P.chargeMax && !e.lock){
+      e.lock = true;
+      if(t - GM.lastLockBlip > 90){ sfx('lock'); GM.lastLockBlip = t; }
+    }
+  });
+
+  /* 敌人推进 */
+  GM.enemies.forEach(function(e){
+    if(!GM.on) return;
+    if(e.state === 'dead') return;
+    if(e.lock) return;                    // 锁瞳后原地不动，等被处决
+    if(e.state === 'walk'){
+      e.y += P.enemySpeed * dt;
+      if(e.y >= g.attackY){
+        e.state = 'telegraph';
+        e.telStart = t;
+        sfx('drum');
+      }
+    } else if(e.state === 'telegraph'){
+      if(t - e.telStart >= P.telegraph){
+        /* 前摇期间闭眼 ≥120ms 则挡下 */
+        var sh = GM.lastShield;
+        var shielded = sh && sh.e >= e.telStart - 40;
+        if(shielded){ GM.blocked++; sfx('block'); }
+        else { GM.hp--; GM.hits++; sfx('hit'); }
+        e.state = 'dead';
+        GM.missed++;
+        if(GM.hp <= 0){ endPlay('hp'); }
+      }
+    }
+  });
+
+  /* 生成 */
+  GM.nextSpawn -= dt*1000;
+  if(GM.nextSpawn <= 0){
+    spawnEnemy();
+    if(Math.random() < 0.35) spawnEnemy();
+    GM.spawnGap = Math.max(1400, GM.spawnGap - 40);
+    GM.nextSpawn = GM.spawnGap;
+  }
+
+  GM.enemies = GM.enemies.filter(function(e){ return e.state !== 'dead'; });
+
+  if(now() - GM.t0 >= P.runMs) endPlay('time');
+}
+
+/* ============================================================
+   11. 音频（WebAudio 合成，无外部文件）
+   ============================================================ */
+var AC = null, master = null, hum = null, humGain = null;
+
+function startAudio(){
+  /* 第二局开始时会话已存在但被 suspend 过，必须 resume，否则这一局全程无声 */
+  if(AC){
+    if(AC.state === 'suspended'){ try { AC.resume(); } catch(e){} }
+    return;
+  }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain();
+    master.gain.value = 0.6;
+    master.connect(AC.destination);
+    hum = AC.createOscillator();
+    hum.type = 'sawtooth';
+    hum.frequency.value = 120;
+    humGain = AC.createGain();
+    humGain.gain.value = 0;
+    hum.connect(humGain);
+    humGain.connect(master);
+    hum.start();
+  } catch(e){ AC = null; }
+}
+
+function stopAudio(){
+  try {
+    if(humGain) humGain.gain.value = 0;
+    if(AC && AC.state === 'running') AC.suspend();
+  } catch(e){}
+}
+
+function sfx(kind){
+  if(!AC || AC.state !== 'running') return;
+  var t = AC.currentTime, o, g2;
+  function tone(f, dur, type, vol){
+    o = AC.createOscillator(); g2 = AC.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f, t);
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(vol || 0.2, t + 0.012);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g2); g2.connect(master);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  if(kind === 'lock')  { tone(1180, 0.10, 'square', 0.12); }
+  if(kind === 'exec')  { tone(180, 0.26, 'sawtooth', 0.22); tone(90, 0.34, 'sine', 0.20); }
+  if(kind === 'drum')  { tone(70, 0.16, 'sine', 0.28); }
+  if(kind === 'block') { tone(520, 0.09, 'triangle', 0.16); }
+  if(kind === 'hit')   { tone(120, 0.22, 'square', 0.24); }
+  if(kind === 'breath'){ tone(200, 1.6, 'sine', 0.10); }
+}
+
+/* 蓄力嗡鸣跟随 */
+function updateHum(){
+  if(!humGain || !GM || !GM.on){ if(humGain) humGain.gain.value = 0; return; }
+  var best = 0;
+  GM.enemies.forEach(function(e){ if(e.state === 'walk') best = Math.max(best, e.cd/P.chargeMax); });
+  var open = (BLINK.active || GM.blackout > 0) ? 0 : 1;
+  humGain.gain.value = 0.035 * best * open;
+  hum.frequency.value = 110 + 260*best;
+}
+
+/* ============================================================
+   12. 主循环
+   ============================================================ */
+var lastT = now();
+var acc = 0;
+var STEP = 1/120;
+
+function loop(){
+  requestAnimationFrame(loop);
+  var t = now();
+  var dt = Math.min(0.1, (t - lastT)/1000);
+  lastT = t;
+
+  if(S.phase === 'play' && GM && GM.on){
+    acc += dt;
+    var guard = 0;
+    while(acc >= STEP && guard < 8){ stepPlay(STEP); acc -= STEP; guard++; }
+    GM.elapsed = t - GM.t0;
+    updateHum();
+    renderPlay(dt);
+  } else if(S.phase === 'instr'){
+    /* 仪器模式下画一个十字准星供静视参考 */
+    ctx.fillStyle = '#070a10';
+    ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(W/2-18,H/2); ctx.lineTo(W/2+18,H/2);
+    ctx.moveTo(W/2,H/2-18); ctx.lineTo(W/2,H/2+18); ctx.stroke();
+    if(S.calibrated() && Gaze.filt.ok){
+      ctx.beginPath();
+      ctx.arc(Gaze.filt.x, Gaze.filt.y, 6, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(47,214,166,0.7)';
+      ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = '#070a10';
+    ctx.fillRect(0,0,W,H);
+  }
+}
+requestAnimationFrame(loop);
+
+/* ============================================================
+   13. 仪器模式主流程
+   ============================================================ */
+function runInstrument(){
+  S.phase = 'instr';
+  INSTR = newInstr();
+  showScreen('scrInstr');
+  $('insTitle').textContent = '仪器模式';
+  $('insLive').innerHTML = '';
+
+  $('insTip').textContent = '第一步：校准（5 点校准 + 5 点错开复测）';
+  $('insFill').style.width = '0%';
+
+  runCalibration().then(function(r){
+    INSTR.calGains = r.gains;
+    INSTR.calErrs = r.errs;
+    if(!r.errs.length) throw new Error('复测没有采到有效点，请重新校准。');
+    showScreen('scrInstr');
+    $('insTip').textContent = '第一步完成：复测 ' + r.errs.length + ' 点，误差均值 ' + r0(instrVerdict().mean) + 'px';
+    $('insFill').style.width = '10%';
+    return wait(700);
+  }).then(function(){
+    return measureJitter();
+  }).then(function(){
+    return measureZones();
+  }).then(function(){
+    return measureBlinkBaseline();
+  }).then(function(){
+    showReport();
+  }).catch(function(e){
+    if(S.phase === 'instr' || S.phase === 'calib'){ fail(e); }
+  });
+}
+
+/* ============================================================
+   14. 事件绑定
+   ============================================================ */
+function ensureReady(){
+  return startCamera()
+    .then(function(){ return bootFaceMesh(); })
+    .then(function(){ pumpDetect(); });
+}
+
+$('btnInstr').addEventListener('click', function(){
+  var b = this; b.disabled = true; b.textContent = '启动摄像头…';
+  ensureReady().then(function(){
+    /* 进入仪器模式后所有遮罩都要关掉，只留仪器面板 */
+    hideAllScreens();
+    b.disabled = false; b.textContent = '仪器模式 · 先测数据';
+    runInstrument();
+  }).catch(function(e){
+    b.disabled = false; b.textContent = '仪器模式 · 先测数据';
+    fail(e);
+  });
+});
+
+$('btnPlay').addEventListener('click', function(){
+  var b = this; b.disabled = true; b.textContent = '启动摄像头…';
+  ensureReady().then(function(){
+    b.disabled = false; b.textContent = '玩法灰盒 · 直接试玩';
+    if(!S.calibrated()){
+      /* 没校准就先校准，校准完直接进游戏 */
+      return runCalibration().then(function(){
+        hideAllScreens();
+        startPlay();
+      });
+    }
+    hideAllScreens();
+    startPlay();
+  }).catch(function(e){
+    b.disabled = false; b.textContent = '玩法灰盒 · 直接试玩';
+    fail(e);
+  });
+});
+
+$('btnCalCancel').addEventListener('click', function(){
+  S.phase = 'home'; showScreen('scrHome');
+});
+$('btnInsCancel').addEventListener('click', function(){
+  recOpen = false; onFaceHooks = null;
+  S.phase = 'home'; showScreen('scrHome');
+});
+$('btnRepHome').addEventListener('click', function(){
+  S.phase = 'home'; showScreen('scrHome');
+});
+$('btnEndHome').addEventListener('click', function(){
+  S.phase = 'home'; showScreen('scrHome');
+  $('degBtn').classList.remove('on');
+});
+
+$('degBtn').addEventListener('click', function(ev){
+  ev.stopPropagation();
+  toggleDegrade();
+});
+
+/* 触摸降级：点屏幕三块纵向区域选目标，闭眼处决仍走眨眼 */
+cvs.addEventListener('pointerdown', function(ev){
+  if(S.phase !== 'play' || !DEG.on || !GM || !GM.on) return;
+  var x = ev.clientX;
+  ZONE.active = x < W/3 ? 0 : (x < 2*W/3 ? 1 : 2);
+});
+
+$('btnCopy').addEventListener('click', function(){
+  var ta = $('repText');
+  ta.focus(); ta.select();
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(function(){ $('btnCopy').textContent = '已复制'; }, function(){ $('btnCopy').textContent = '已全选，长按复制'; });
+    } else { $('btnCopy').textContent = '已全选，长按复制'; }
+  } catch(e){ $('btnCopy').textContent = '已全选，长按复制'; }
+});
+$('btnCopyEnd').addEventListener('click', function(){
+  var ta = $('endText');
+  ta.focus(); ta.select();
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(function(){}, function(){});
+    }
+  } catch(e){}
+  $('btnCopyEnd').textContent = '已全选，长按复制';
+});
+
+/* 首次进入：先只启动摄像头，让用户看到设备状态，不自动跑任何测量 */
+$('stThr').textContent = BLINK.thr.toFixed(3) + '（默认）';
+
+})();
+</script>
+</body>
+</html>
