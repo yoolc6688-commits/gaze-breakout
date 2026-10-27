@@ -1,0 +1,3030 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07090c">
+<title>一个眼神杀死你 · 目剑</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#07090c;color:#e8eef7;overflow:hidden;overscroll-behavior:none;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+.serif{font-family:"Songti SC","STSong","Noto Serif SC","Source Han Serif SC",serif}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block}
+#cam{position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none}
+.scr{position:fixed;inset:0;z-index:20;background:#07090c;display:flex;flex-direction:column;
+  padding:calc(env(safe-area-inset-top) + 18px) 20px calc(env(safe-area-inset-bottom) + 18px);
+  overflow-y:auto;-webkit-overflow-scrolling:touch}
+.scr.hide{display:none!important}
+h1{font-size:22px;font-weight:500;margin:0 0 4px;letter-spacing:5px;
+  font-family:"Songti SC","STSong","Noto Serif SC",serif}
+h2{font-size:16px;font-weight:600;margin:18px 0 8px;color:#9fb3cc}
+p{margin:0 0 10px;font-size:14px;line-height:1.65;color:#8c9db3}
+.dim{color:#5d6b7d}
+.btn{display:block;width:100%;padding:16px;margin:8px 0;border:0;border-radius:14px;
+  font-size:17px;font-weight:500;color:#1a1206;background:#d8b45c;cursor:pointer;letter-spacing:2px;
+  font-family:inherit;transition:transform .08s}
+.btn:active{transform:scale(.985)}
+.btn.ghost{background:transparent;color:#9fb3cc;border:1px solid #2a3648}
+.btn.red{background:#e8544f;color:#1a0505}
+.btn:disabled{opacity:.4}
+.card{background:#0e141d;border:1px solid #1d2735;border-radius:14px;padding:14px;margin:10px 0}
+.step{display:flex;gap:8px;font-size:12.5px;line-height:1.5;color:#c3cfdd;margin:6px 0}
+.step b{flex:0 0 16px;height:16px;border-radius:4px;background:#1b2836;color:#e8b64f;
+  font-size:11px;font-weight:600;text-align:center;line-height:16px;margin-top:1px}
+.kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:5px 0;border-bottom:1px solid #161f2b}
+.kv:last-child{border-bottom:0}
+.kv b{color:#dfe9f5;font-weight:500;font-variant-numeric:tabular-nums}
+.kv span{color:#7b8b9f}
+textarea{width:100%;height:260px;background:#0a1017;color:#b9cbe0;border:1px solid #1d2735;border-radius:10px;
+  padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;resize:vertical}
+#target{position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;
+  border:3px solid #e8b64f;box-shadow:0 0 0 8px rgba(232,182,79,.14);z-index:40;display:none;pointer-events:none}
+#target.on{display:block}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 16px);z-index:90;
+  background:#2a1113;border:1px solid #7d2b2b;color:#ffb9b6;padding:14px;border-radius:12px;font-size:13px;
+  line-height:1.6;display:none}
+#toast.on{display:block}
+#toast button{margin-top:10px;width:100%;padding:12px;border:0;border-radius:10px;background:#e8544f;color:#1a0505;
+  font-size:15px;font-weight:600;font-family:inherit}
+.bar{height:6px;background:#141c27;border-radius:3px;overflow:hidden;margin:10px 0}
+.bar i{display:block;height:100%;width:0;background:#d8b45c;transition:width .15s}
+
+/* 仪器模式的视觉参照必须画在 DOM 上。
+   原来画在 canvas 里，而 .scr 遮罩是不透明黑底 + z-index:20，整块 canvas 被盖住，
+   玩家看到的只有纯黑 —— 提示语让「盯着中央的十字」，屏幕上却什么都没有。
+   这两层放在 #scrInstr 内部且不带 z-index，靠 DOM 顺序压在标题/卡片之下。 */
+#insFix,#insZones{position:fixed;inset:0;pointer-events:none;display:none;z-index:0}
+/* 定位元素永远绘制在非定位元素之上，光靠 DOM 顺序压不住青色带。
+   给面板内容补 relative + z-index，数据卡与按钮才不会被青色盖掉。 */
+#scrInstr > h1,#scrInstr > p,#scrInstr > .bar,#scrInstr > .card,#scrInstr > .btn{position:relative;z-index:1}
+#insFix.on{display:block}
+#insZones.on{display:flex}
+#insFix::before,#insFix::after{content:'';position:absolute;background:rgba(255,255,255,.5)}
+#insFix::before{left:50%;top:50%;width:52px;height:1.5px;margin:-.75px 0 0 -26px}
+#insFix::after{left:50%;top:50%;width:1.5px;height:52px;margin:-26px 0 0 -.75px}
+#insFix b{position:absolute;left:50%;top:50%;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;
+  border-radius:50%;border:1.5px solid rgba(47,214,166,.9);box-sizing:border-box}
+#insZones i{flex:1;position:relative;transition:background .07s,box-shadow .07s}
+#insZones i.on{background:rgba(34,198,208,.26);
+  box-shadow:inset 0 0 0 2px rgba(70,236,242,.8),inset 0 0 46px rgba(34,198,208,.30)}
+/* 标签放低一些，避开上方提示语与中部数据卡，保证「亮在哪一区」始终看得见 */
+#insZones i.on::after{content:attr(data-lbl);position:absolute;left:0;right:0;top:76%;
+  transform:translateY(-50%);text-align:center;font-size:30px;font-weight:700;
+  color:#c8fbfd;text-shadow:0 0 16px rgba(70,236,242,.85)}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+.tag{display:inline-block;font-size:11px;padding:3px 8px;border-radius:6px;background:#16202c;color:#7f93aa;margin-right:6px}
+.big{font-size:30px;font-weight:600;color:#e8b64f;font-variant-numeric:tabular-nums}
+#degBtn{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom) + 116px);z-index:30;display:none;
+  padding:10px 14px;border-radius:12px;border:1px solid #7d2b2b;background:rgba(35,14,15,.92);color:#ffb9b6;
+  font-size:12px;font-family:inherit;line-height:1.4}
+#degBtn.on{display:block}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+<video id="cam" playsinline muted autoplay></video>
+<div id="target"></div>
+
+<div class="scr" id="scrHome">
+  <h1>一个眼神杀死你</h1>
+  <p class="dim" style="letter-spacing:3px;color:#8a7a5c">目 剑 一 脉</p>
+  <div class="card" id="homeStatus">
+    <div class="kv"><span>摄像头</span><b id="stCam">未启动</b></div>
+    <div class="kv"><span>虹膜引擎</span><b id="stMp">未启动</b></div>
+    <div class="kv"><span>检测帧率</span><b id="stFps">--</b></div>
+    <div class="kv"><span>垂目阈值</span><b id="stThr">0.105（默认）</b></div>
+  </div>
+  <button class="btn" id="btnPlay">入 定 · 开始一局</button>
+  <button class="btn ghost" id="btnInstr">先测眼力 · 仪器模式</button>
+  <div class="card" id="howTo">
+    <div style="font-size:12px;color:#7b8b9f;margin-bottom:8px">功法只有两式：一眼杀人，垂目守心</div>
+    <div class="step"><b>1</b><span><b style="background:none;color:#e8b64f;display:inline;padding:0">扫</b>　凝神看某一区，剑意满则「刻痕」成形。连扫三区 = 三才剑阵</span></div>
+    <div class="step"><b>2</b><span><b style="background:none;color:#e8b64f;display:inline;padding:0">斩</b>　垂目（闭眼 0.2 秒），剑意沿刻痕斩出。刻痕只留 4 秒，别拖</span></div>
+    <div class="step"><b>3</b><span><b style="background:none;color:#e8b64f;display:inline;padding:0">避</b>　窥天者不可直视，看超 0.6 秒就被反噬。移到别的区</span></div>
+    <div class="step"><b>4</b><span><b style="background:none;color:#e8b64f;display:inline;padding:0">忍</b>　心魔与你对瞪：它先垂目，你才斩得动。它没眨你闭眼，就是自伤</span></div>
+    <div style="font-size:11.5px;color:#8a7a5c;margin-top:10px;line-height:1.6">
+      一局 90 秒，练气·剑路 → 窥天 → 心魔，三个动词。<br>
+      闭眼是唯一的动作，既是剑也是盾 —— 同一秒里只能选一个。
+    </div>
+  </div>
+  <p class="dim" style="margin-top:18px;font-size:12px">
+    视频帧只在本机处理，不上传任何数据。本局数据也只留在这台手机上。
+  </p>
+</div>
+
+<div class="scr hide" id="scrCalib">
+  <h1 style="font-size:18px">校准</h1>
+  <p id="calTip">等面部入镜…</p>
+  <div class="bar"><i id="calFill"></i></div>
+  <p class="dim" id="calSub" style="font-size:12px"></p>
+  <button class="btn ghost" id="btnCalCancel" style="margin-top:auto">取消</button>
+</div>
+
+<div class="scr hide" id="scrInstr">
+  <!-- 视觉参照层：必须放在遮罩内部、且排在内容之前，才会被标题与卡片压住而非遮住它们 -->
+  <div id="insFix"><b></b></div>
+  <div id="insZones"><i data-lbl="左"></i><i data-lbl="中"></i><i data-lbl="右"></i></div>
+  <h1 style="font-size:18px" id="insTitle">仪器模式</h1>
+  <p id="insTip">准备中…</p>
+  <div class="bar"><i id="insFill"></i></div>
+  <div class="card" id="insLive"></div>
+  <button class="btn ghost" id="btnInsCancel" style="margin-top:auto">中止</button>
+</div>
+
+<div class="scr hide" id="scrReport">
+  <h1 style="font-size:18px">测量报告</h1>
+  <div class="card" id="repSummary"></div>
+  <textarea id="repText" readonly></textarea>
+  <button class="btn" id="btnCopy">复制报告</button>
+  <button class="btn ghost" id="btnRepHome">回首页</button>
+</div>
+
+<div class="scr hide" id="scrEnd">
+  <h1 style="font-size:18px" id="endTitle">一局结束</h1>
+  <div class="card" id="endStats"></div>
+  <p style="margin-top:12px">这一局你的眼睛有多累？</p>
+  <div class="row" id="fatigueRow"></div>
+  <textarea id="endText" readonly style="height:180px;margin-top:12px"></textarea>
+  <button class="btn" id="btnCopyEnd">复制本局数据</button>
+  <button class="btn ghost" id="btnEndHome">回首页</button>
+</div>
+
+<div id="toast"><span id="toastMsg"></span><br><button id="toastBtn">刷新页面</button></div>
+<button id="degBtn">切触摸</button>
+
+<script>
+/* MediaPipe 资源：本地用 ./mp/，部署在 /m1/ 子目录时用 ../mp/，再不行回退 CDN。
+   同源的目的：模型与页面走同一个边缘节点，避开跨境链路中断。
+   注意：这里必须用 Script 标签动态加载，不能用 <script onerror="..."> 属性里的
+   new URL()——内联事件处理器的作用域链上有 document，document.URL 是一个字符串，
+   会把 window.URL 这个构造函数遮住，导致 "URL is not a constructor"，回退链直接失效。 */
+window.__MP_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/';
+window.__MP_BASE = /\/(m1|m2)\//.test(location.pathname) ? '../mp/' : './mp/';
+
+/* Emscripten 胶水执行时会给全局 Module 装一批「已废弃属性」的抛错 getter：
+     if(!Object.getOwnPropertyDescriptor(Module,"arguments")) defineProperty(get(){ abort(...) })
+   之后任何代码再读到 Module.arguments 就立刻 abort，整个 wasm 实例报废。
+   这里预先把这些属性定义成普通数据属性，胶水检测到 descriptor 已存在就会跳过安装。 */
+(function(){
+  var M = window.Module = window.Module || {};
+  ['arguments','thisProgram','preRun','postRun','print','printErr','onRuntimeInitialized']
+  .forEach(function(k){
+    if (!Object.getOwnPropertyDescriptor(M, k)){
+      try { Object.defineProperty(M, k, { configurable:true, writable:true, value:undefined }); } catch(e){}
+    }
+  });
+})();
+
+(function(){
+  var bases = /\/(m1|m2)\//.test(location.pathname) ? ['../mp/','./mp/'] : ['./mp/','../mp/'];
+  bases.push(window.__MP_CDN);
+  var i = 0;
+  function tryNext(){
+    if(i >= bases.length){ window.__MP_FAIL = true; return; }
+    var base = bases[i++];
+    var s = document.createElement('script');
+    s.src = base + 'face_mesh.js';
+    s.crossOrigin = 'anonymous';
+    s.onload  = function(){ window.__MP_BASE = base; window.__MP_OK = true; };
+    s.onerror = function(){ tryNext(); };
+    document.head.appendChild(s);
+  }
+  tryNext();
+})();
+</script>
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   0. 工具
+   ============================================================ */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function now(){ return performance.now(); }
+function wait(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+function median(arr){
+  if(!arr.length) return 0;
+  var s = arr.slice().sort(function(a,b){ return a-b; });
+  var m = Math.floor(s.length/2);
+  return s.length % 2 ? s[m] : (s[m-1]+s[m])/2;
+}
+function pct(arr, p){
+  if(!arr.length) return 0;
+  var s = arr.slice().sort(function(a,b){ return a-b; });
+  var i = clamp((s.length-1) * p, 0, s.length-1);
+  var lo = Math.floor(i), hi = Math.ceil(i);
+  return lo === hi ? s[lo] : s[lo] + (s[hi]-s[lo]) * (i-lo);
+}
+function r1(v){ return Math.round(v*10)/10; }
+/* NaN 不能直接当数字印出来：视线没采到帧时抖动无定义，必须显示「无数据」而不是 NaN */
+function fmtPx(v, unit){ return isFinite(v) ? r1(v) + (unit||'px') : '无数据'; }
+function fmtPct(v){ return isFinite(v) ? r1(v*100) + '%' : '无数据'; }
+function r0(v){ return Math.round(v); }
+function $(id){ return document.getElementById(id); }
+
+/* 最小二乘：解 A x = b，A 为 n×m */
+function solveLS(A, b, m){
+  var n = A.length, M = [], i, j, k;
+  for(i=0;i<m;i++) M.push(new Float64Array(m+1));
+  for(i=0;i<m;i++){
+    for(j=0;j<m;j++){
+      var s=0;
+      for(k=0;k<n;k++) s += A[k][i]*A[k][j];
+      M[i][j]=s;
+    }
+    var t=0;
+    for(k=0;k<n;k++) t += A[k][i]*b[k];
+    M[i][m]=t;
+  }
+  for(i=0;i<m;i++){
+    var mx=i;
+    for(j=i+1;j<m;j++) if(Math.abs(M[j][i])>Math.abs(M[mx][i])) mx=j;
+    if(Math.abs(M[mx][i])<1e-12) return null;
+    var tmp=M[i]; M[i]=M[mx]; M[mx]=tmp;
+    var pv=M[i][i];
+    for(j=i;j<=m;j++) M[i][j]/=pv;
+    for(j=0;j<m;j++){
+      if(j===i) continue;
+      var f=M[j][i];
+      if(f===0) continue;
+      for(k=i;k<=m;k++) M[j][k] -= f*M[i][k];
+    }
+  }
+  var out=[];
+  for(i=0;i<m;i++) out.push(M[i][m]);
+  return out;
+}
+
+/* one-euro：人眼是「注视—眼跳—注视」的离散步进，原始信号直接驱动会抽搐 */
+function OneEuro(mc,beta,dc){ this.mc=mc; this.beta=beta; this.dc=dc; this.xp=null; this.dxp=0; }
+OneEuro.prototype.alpha=function(cut,dt){
+  var tau = 1/(2*Math.PI*cut);
+  return 1/(1 + tau/dt);
+};
+OneEuro.prototype.filter=function(x,dt){
+  if(this.xp===null){ this.xp=x; this.dxp=0; return x; }
+  var dx=(x-this.xp)/dt;
+  var ad=this.alpha(this.dc,dt);
+  this.dxp = this.dxp + ad*(dx-this.dxp);
+  var cut = this.mc + this.beta*Math.abs(this.dxp);
+  var a = this.alpha(cut,dt);
+  this.xp = this.xp + a*(x-this.xp);
+  return this.xp;
+};
+OneEuro.prototype.reset=function(){ this.xp=null; this.dxp=0; };
+
+var FX = new OneEuro(1.1,0.045,1.0);
+var FY = new OneEuro(1.1,0.045,1.0);
+
+/* ============================================================
+   1. 全局状态
+   ============================================================ */
+var S = {
+  phase:'home',          // home|calib|instr|report|play|end
+  camReady:false,
+  mpReady:false,
+  mpDead:false,
+  faceOk:false,
+  detectFps:0,
+  totalFrames:0,
+  blinkFrames:0
+};
+
+var Gaze = {
+  raw:{x:0,y:0,ok:false},
+  filt:{x:0,y:0,ok:false},
+  jitter:0,
+  lostMs:0
+};
+
+/* 3 帧中值剔除：MediaPipe 偶发关键点跳飞，会在单帧产生 300–400px 的假位移。
+   低通滤波对脉冲噪声无效——尖峰只会被拖成一段斜坡，反而更难看；
+   中值对孤立尖峰必定剔除，对真实阶跃（眼跳）只延迟 1 帧（约 33ms）。 */
+var MEDI = {
+  bx:[], by:[],
+  push:function(x,y){
+    this.bx.push(x); this.by.push(y);
+    if(this.bx.length > 3){ this.bx.shift(); this.by.shift(); }
+  },
+  mid:function(a){
+    var s = a.slice().sort(function(p,q){ return p-q; });
+    return s.length === 0 ? 0 : s[Math.floor(s.length/2)];
+  },
+  x:function(){ return this.mid(this.bx); },
+  y:function(){ return this.mid(this.by); },
+  reset:function(){ this.bx = []; this.by = []; }
+};
+
+var Model = { a:null, b:null, mean:{x:0,y:0}, flipX:false };  // flipX：前摄画面左右反转，x 轴需镜像
+
+/* 眨眼：逐用户阈值，默认沿用上一版 0.105，测量后按基线重算 */
+var BLINK = {
+  thr: 0.105,
+  thrSource: '默认值',
+  openBuf: [],           // 基线采样 {t,v}
+  active: false,
+  startT: 0,
+  events: [],            // {s,e,d}
+  naturalP90: 0
+};
+
+/* 两只眼的角点在画面里互为镜像，这是最容易写错的一处：
+     画面左侧那只眼：33 在左、133 在右
+     画面右侧那只眼：362 在左、263 在右
+   旧版按「外眼角 → 内眼角」取轴，于是两眼的 ax 方向相反（一个指向画面右、一个指向画面左）。
+   两眼一平均，水平信号刚好互相抵消 —— ax 基本恒在 0.5 附近不动，剩下全是噪声。
+   校准再去拟合这份噪声，就会解出 a1=-18.5 这种又负又大的斜率。
+   现在统一按「画面左 → 画面右」取轴，两眼同向，平均才有意义。 */
+var LM = {
+  A_L:33,  A_R:133, A_TOP:159, A_BOT:145, A_IRIS:468,   // 画面左侧那只眼
+  B_L:362, B_R:263, B_TOP:386, B_BOT:374, B_IRIS:473    // 画面右侧那只眼
+};
+
+/* ============================================================
+   2. 画布
+   ============================================================ */
+var cvs = $('game');
+var ctx = cvs.getContext('2d', { alpha:false });
+var W = 0, H = 0, DPR = 1;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  cvs.width  = Math.floor(W * DPR);
+  cvs.height = Math.floor(H * DPR);
+  cvs.style.width = W + 'px';
+  cvs.style.height = H + 'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 120); });
+resize();
+
+/* ============================================================
+   3. MediaPipe 启动（幂等 + 三层防御）
+   ============================================================ */
+var faceMesh = null;
+var mpBootPromise = null;
+var detectBusy = false;
+var detectCount = 0;
+var fpsT0 = 0;
+
+function waitMpScript(){
+  /* 脚本是动态加载的，可能比用户点按钮慢。没等到就直接报错会误判成"引擎不可用"。 */
+  return new Promise(function(resolve, reject){
+    var t0 = now();
+    (function chk(){
+      if(typeof window.FaceMesh === 'function') return resolve();
+      if(window.__MP_FAIL) return reject(new Error('MediaPipe 脚本全部加载失败（同源与 CDN 均不可达），请检查网络后刷新'));
+      if(now() - t0 > 10000) return reject(new Error('MediaPipe 脚本加载超时，请检查网络后刷新'));
+      setTimeout(chk, 120);
+    })();
+  });
+}
+
+function bootFaceMesh(){
+  if(S.mpReady && faceMesh) return Promise.resolve();
+  if(mpBootPromise) return mpBootPromise;
+  if(S.mpDead) return Promise.reject(new Error('虹膜引擎已停止工作，刷新页面后重试'));
+
+  mpBootPromise = waitMpScript().then(function(){
+    faceMesh = new window.FaceMesh({ locateFile:function(f){ return window.__MP_BASE + f; } });
+    faceMesh.setOptions({
+      maxNumFaces:1, refineLandmarks:true,
+      minDetectionConfidence:0.5, minTrackingConfidence:0.5
+    });
+    faceMesh.onResults(onFace);
+    return faceMesh.initialize();
+  }).then(function(){
+    S.mpReady = true;
+    $('stMp').textContent = '就绪';
+  }).catch(function(e){
+    mpBootPromise = null;
+    var m = (e && e.message) ? e.message : String(e);
+    if(/abort|Module\.|RuntimeError|WebAssembly/i.test(m)){
+      S.mpDead = true;
+      $('stMp').textContent = '初始化失败';
+      throw new Error('虹膜引擎在这台手机上初始化失败（wasm 运行时中断）。刷新可重试一次；仍失败说明机型与引擎不兼容。');
+    }
+    throw e;
+  });
+  return mpBootPromise;
+}
+
+function startCamera(){
+  if(S.camReady && $('cam').srcObject) return Promise.resolve();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    return Promise.reject(new Error('浏览器不支持摄像头调用'));
+  }
+  if(!window.isSecureContext){
+    return Promise.reject(new Error('当前不是 https 安全环境，浏览器禁止调用摄像头'));
+  }
+  return navigator.mediaDevices.getUserMedia({
+    audio:false,
+    video:{ facingMode:'user', width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30,max:30} }
+  }).then(function(stream){
+    var v = $('cam');
+    v.srcObject = stream;
+    return v.play();
+  }).then(function(){
+    S.camReady = true;
+    $('stCam').textContent = '已启动';
+  }, function(err){
+    var n = (err && err.name) || '';
+    if(n === 'NotAllowedError') throw new Error('摄像头权限被拒绝。请在浏览器设置里允许本站访问摄像头，然后刷新页面。');
+    if(n === 'NotFoundError')   throw new Error('没有找到摄像头。');
+    if(n === 'NotReadableError')throw new Error('摄像头被其他应用占用，关掉那个应用后重试。');
+    throw new Error('摄像头启动失败：' + (err && err.message ? err.message : n));
+  });
+}
+
+var pumpRunning = false;
+function pumpDetect(){
+  /* 幂等：重复调用不能起两条检测循环，否则同一帧会被 send 两次，帧率与延迟全部失真 */
+  if(pumpRunning) return;
+  pumpRunning = true;
+  (function tick(){
+    requestAnimationFrame(tick);
+    if(!S.camReady || !S.mpReady || detectBusy) return;
+    var v = $('cam');
+    if(v.readyState < 2 || v.videoWidth === 0) return;
+    detectBusy = true;
+    faceMesh.send({ image:v }).then(function(){
+      detectBusy = false;
+      detectCount++;
+      var dt = now() - fpsT0;
+      if(dt > 700){
+        S.detectFps = Math.round(detectCount * 1000 / dt);
+        detectCount = 0; fpsT0 = now();
+        $('stFps').textContent = S.detectFps + ' fps';
+      }
+    }).catch(function(){ detectBusy = false; });
+  })();
+}
+
+/* 478 点 → 双眼虹膜归一化特征（相对量，抗头动） */
+function extractFeat(lm){
+  function eye(outer, inner, top, bot, iris){
+    var o=lm[outer], i=lm[inner], t=lm[top], b=lm[bot], c=lm[iris];
+    if(!o||!i||!t||!b||!c) return null;
+    var ux=i.x-o.x, uy=i.y-o.y;
+    var wx=b.x-t.x, wy=b.y-t.y;
+    var du=ux*ux+uy*uy, dw=wx*wx+wy*wy;
+    if(du<1e-9||dw<1e-9) return null;
+    return {
+      ax: ((c.x-o.x)*ux + (c.y-o.y)*uy)/du,
+      ay: ((c.x-t.x)*wx + (c.y-t.y)*wy)/dw,
+      open: Math.sqrt(dw)/Math.sqrt(du)
+    };
+  }
+  var a = eye(LM.A_L,LM.A_R,LM.A_TOP,LM.A_BOT,LM.A_IRIS);
+  var b = eye(LM.B_L,LM.B_R,LM.B_TOP,LM.B_BOT,LM.B_IRIS);
+  if(!a||!b) return null;
+  return { ax:(a.ax+b.ax)/2, ay:(a.ay+b.ay)/2, open:Math.min(a.open,b.open) };
+}
+
+function predict(fx,fy){
+  if(!Model.a) return null;
+  /* 前摄画面左右是反的：玩家看屏幕右侧时，虹膜在画面里往左走。
+     镜像必须在**输入端**做。只把 a1 取反、让输入不动，等于把输出左右颠倒，
+     会把"看左"解成"看右"——实测复测误差从 6px 恶化到 126px。 */
+  var x = (Model.flipX ? -1 : 1) * (fx - Model.mean.x);
+  var y = fy - Model.mean.y;
+  var v = [1, x, y, x*y];
+  var sx=0, sy=0;
+  for(var i=0;i<4;i++){ sx += v[i]*Model.a[i]; sy += v[i]*Model.b[i]; }
+  return { sx:sx, sy:sy };
+}
+
+/* ============================================================
+   4. 眨眼：检测 + 事件
+   ============================================================ */
+var blinkHooks = null;   // {onEnd:function(dur)}
+
+function onBlinkEnd(dur){
+  if(dur < 80) return;                       // 抖动，丢弃
+  BLINK.events.push({ s:BLINK.startT, e:now(), d:dur });
+  if(BLINK.events.length > 400) BLINK.events.shift();
+  if(blinkHooks && blinkHooks.onEnd) blinkHooks.onEnd(dur);
+}
+
+/* ============================================================
+   5. 三区判定（含 60px 吸附带 / 迟滞）
+   ============================================================ */
+var ZONE = { active:-1, band:60 };
+
+function classifyZone(sx){
+  var zw = W/3;
+  var z = sx < zw ? 0 : (sx < 2*zw ? 1 : 2);
+  if(ZONE.active >= 0 && z !== ZONE.active){
+    /* 迟滞：向上换区要越过边界 +60px，向下换区要越过边界 −60px。
+       这 120px 的滞回带就是方案里的「软吸附带」，用于抑制边界抖动，
+       且只作用于「区」这个离散量，不作用于坐标。 */
+    if(z > ZONE.active){
+      if(sx < (ZONE.active+1)*zw + ZONE.band) z = ZONE.active;
+    } else {
+      if(sx > ZONE.active*zw - ZONE.band) z = ZONE.active;
+    }
+  }
+  ZONE.active = z;
+  return z;
+}
+
+/* ============================================================
+   6. 面部回调：视线管线
+   ============================================================ */
+var recOpen = false;      // 仪器模式采样开关
+var onFaceHooks = null;   // {onSample:function(f, sx, sy)}
+
+function onFace(res){
+  S.totalFrames++;
+  var lms = res.multiFaceLandmarks;
+
+  if(!lms || !lms.length){
+    S.faceOk = false;
+    Gaze.lostMs += 33;
+    return;
+  }
+  S.faceOk = true;
+
+  var f = extractFeat(lms[0]);
+  if(!f) return;
+
+  if(recOpen) BLINK.openBuf.push({ t:now(), v:f.open });
+
+  /* 校准采样：必须在下面两处 return 之前，否则永远采不到帧。
+     （v0.1 把这一行漏了，导致 calBuf 恒为空、5 个点全废、报「0/5」——
+       报错文案还去怪用户的脸和光线，实际是采样管道没接线。）
+     这里刻意不用 BLINK.thr：那是游戏内眨眼判定阈值，逐人标定前默认 0.105，
+     眼裂偏小或戴眼镜的人正常睁眼就贴着线，会被整段判成闭眼而采不到样本。
+     校准只需要虹膜位置，用一个纯粹的「眼皮确实合上」硬下限即可。 */
+  if(calActive && f.open >= 0.05) calBuf.push({ ax:f.ax, ay:f.ay });
+
+  /* 闭眼：不更新视线（保持上次有效值，否则睁眼瞬间会弹飞） */
+  if(f.open < BLINK.thr){
+    if(!BLINK.active){ BLINK.active = true; BLINK.startT = now(); }
+    S.blinkFrames++;
+    return;
+  }
+
+  if(BLINK.active){
+    BLINK.active = false;
+    onBlinkEnd(now() - BLINK.startT);
+  }
+
+  if(!S.calibrated()) return;
+  var p = predict(f.ax, f.ay);
+  if(!p) return;
+
+  var rawX = p.sx * W, rawY = p.sy * H;
+  if(!isFinite(rawX) || !isFinite(rawY)) return;
+  rawX = clamp(rawX, -W*0.3, W*1.3);
+  rawY = clamp(rawY, -H*0.3, H*1.3);
+
+  /* 处理链顺序：clamp → 3 帧中值（去孤立尖峰）→ one-euro（去连续抖动）
+     不能反：先低通会把尖峰抹成一段斜坡，中值就再也认不出它了。 */
+  MEDI.push(rawX, rawY);
+  var sx = MEDI.x(), sy = MEDI.y();
+
+  Gaze.raw.x = rawX; Gaze.raw.y = rawY; Gaze.raw.ok = true;
+
+  var dt = Math.min(0.2, Math.max(0.008, (now() - (onFace._t || now()))/1000));
+  onFace._t = now();
+
+  var fx2 = FX.filter(sx, dt);
+  var fy2 = FY.filter(sy, dt);
+
+  var jx = sx-fx2, jy = sy-fy2;
+  Gaze.jitter = Gaze.jitter*0.88 + Math.sqrt(jx*jx+jy*jy)*0.12;
+
+  Gaze.filt.x = fx2; Gaze.filt.y = fy2; Gaze.filt.ok = true;
+  Gaze.lostMs = 0;
+
+  /* 三区判定：只在玩法与仪器模式下更新，避免影响校准阶段的采样。
+     触摸降级时视线不再驱动选区，否则会与手指抢控制权。 */
+  if((S.phase === 'play' || S.phase === 'instr') && !DEG.on) classifyZone(fx2);
+
+  /* 同时交出原始值与滤波值：仪器要测硬件噪声，玩法要测体验噪声，两者不能混 */
+  if(onFaceHooks && onFaceHooks.onSample) onFaceHooks.onSample(f, fx2, fy2, rawX, rawY);
+}
+
+S.calibrated = function(){ return !!Model.a; };
+
+/* ============================================================
+   7. 屏幕管理：所有遮罩一次性关闭（上一版就是卡在这里进不去游戏）
+   ============================================================ */
+var SCREENS = ['scrHome','scrCalib','scrInstr','scrReport','scrEnd'];
+
+function hideAllScreens(){
+  SCREENS.forEach(function(id){ $(id).classList.add('hide'); });
+  $('target').classList.remove('on');
+}
+
+function showScreen(id){
+  hideAllScreens();
+  $(id).classList.remove('hide');
+}
+
+function toast(msg, withReload){
+  $('toastMsg').textContent = msg;
+  $('toastBtn').style.display = withReload === false ? 'none' : 'block';
+  $('toast').classList.add('on');
+}
+$('toastBtn').addEventListener('click', function(){ location.reload(); });
+
+function fail(e){
+  var msg = (e && e.message) ? e.message : String(e);
+  S.phase = 'home';
+  showScreen('scrHome');
+  $('degBtn').classList.remove('on');
+  /* 连续 3 次校准失败 → 自动降级，而不是把玩家卡在"进不去" */
+  if(/校准|复测|面部|增益|方程/.test(msg)){
+    DEG.calFails++;
+    if(DEG.calFails >= 3){
+      enterDegrade('连续 ' + DEG.calFails + ' 次校准失败');
+      return;
+    }
+  }
+  toast(msg, /引擎|wasm|初始化/.test(msg));
+}
+
+/* ============================================================
+   8. 校准：5 点校准 + 5 点复测（两组点错开）
+   ============================================================ */
+/* 校准点 */
+var CAL_PTS = [
+  { x:0.16, y:0.16 }, { x:0.84, y:0.16 }, { x:0.50, y:0.50 },
+  { x:0.16, y:0.84 }, { x:0.84, y:0.84 }
+];
+/* 复测点：与校准点全部错开。重合会算出 0 误差的假精度——上一版真实犯过的错。 */
+var VER_PTS = [
+  { x:0.34, y:0.30 }, { x:0.66, y:0.30 }, { x:0.50, y:0.70 },
+  { x:0.22, y:0.58 }, { x:0.78, y:0.58 }
+];
+
+var calBuf = [];
+var calActive = false;
+
+function showTarget(nx, ny){
+  var t = $('target');
+  t.style.left = Math.round(nx*W) + 'px';
+  t.style.top  = Math.round(ny*H) + 'px';
+  t.classList.add('on');
+}
+function hideTarget(){ $('target').classList.remove('on'); }
+
+function sleepUntilFace(){
+  return new Promise(function(resolve){
+    var t0 = now();
+    (function chk(){
+      if(S.faceOk) return resolve();
+      if(now()-t0 > 20000) return resolve();
+      setTimeout(chk, 150);
+    })();
+  });
+}
+
+/* 采集某个点的虹膜特征中位数 */
+function samplePoint(pt, ms){
+  return wait(620).then(function(){
+    showTarget(pt.x, pt.y);
+    calBuf = [];
+    calActive = true;
+    var t0 = now();
+    return new Promise(function(res){
+      (function tick(){
+        if(now()-t0 >= ms){ calActive = false; return res(); }
+        setTimeout(tick, 50);
+      })();
+    });
+  }).then(function(){
+    calActive = false;
+    if(calBuf.length < 3) return null;
+    var axs = calBuf.map(function(v){ return v.ax; });
+    var ays = calBuf.map(function(v){ return v.ay; });
+    return { ax:median(axs), ay:median(ays), tx:pt.x, ty:pt.y, n:calBuf.length };
+  });
+}
+
+function runCalibration(){
+  S.phase = 'calib';
+  showScreen('scrCalib');
+  Model.a = null; Model.b = null; Model.flipX = false;
+  FX.reset(); FY.reset(); MEDI.reset();
+  ZONE.active = -1;
+  $('calTip').textContent = '请正对镜头，戴上眼镜也可以但要避免反光';
+  $('calSub').textContent = '';
+
+  return sleepUntilFace().then(function(){
+    if(!S.faceOk){ throw new Error('没有检测到面部。请确认前置摄像头对着正脸、光线充足。'); }
+    $('calTip').textContent = '校准中，眼睛跟着绿点走';
+
+    var calFeats = [];
+    var calDiag = [];      // 每个点实际采到的帧数，失败时直接报出来
+    var chain = Promise.resolve();
+    CAL_PTS.forEach(function(pt, i){
+      chain = chain.then(function(){
+        $('calSub').textContent = '校准点 ' + (i+1) + ' / ' + CAL_PTS.length + '　采样中…';
+        $('calFill').style.width = ((i)/CAL_PTS.length*70) + '%';
+        return samplePoint(pt, 1100).then(function(r){
+          calDiag.push(r ? r.n : 0);
+          if(r) calFeats.push(r);
+          $('calSub').textContent = '校准点 ' + (i+1) + ' / ' + CAL_PTS.length +
+            '　采到 ' + (r ? r.n : 0) + ' 帧' + (r ? '' : '（不足 3 帧，作废）');
+        });
+      });
+    });
+
+    return chain.then(function(){
+      hideTarget();
+      var good = calFeats.filter(function(v){ return v; });
+      if(good.length < 4){
+        /* 区分「管道断了」和「真的没看到脸」——这两种情况该给用户完全不同的指引。
+           全 0 帧说明程序侧没产出样本，怪用户毫无意义。 */
+        var zeroAll = calDiag.every(function(n){ return n === 0; });
+        if(zeroAll){
+          throw new Error('校准中断：5 个点全部采到 0 帧，采样管道没有产出数据。' +
+            '这不是你的脸、光线或眼镜的问题，是程序缺陷。请把这句原话发给我。');
+        }
+        throw new Error('有效校准点不足（' + good.length + '/5，各点帧数 ' +
+          calDiag.join(' / ') + '）。部分点没采满，通常是中途离开了画面或持续闭眼，正脸对准镜头重试即可。');
+      }
+
+      Model.mean.x = good.reduce(function(s,v){ return s+v.ax; },0) / good.length;
+      Model.mean.y = good.reduce(function(s,v){ return s+v.ay; },0) / good.length;
+
+      var A=[], bx=[], by=[];
+      good.forEach(function(g){
+        var x=g.ax-Model.mean.x, y=g.ay-Model.mean.y;
+        A.push([1,x,y,x*y]); bx.push(g.tx); by.push(g.ty);
+      });
+      var sa = solveLS(A,bx,4), sb = solveLS(A,by,4);
+      if(!sa || !sb){
+        throw new Error('校准方程退化——眼动特征动态范围过小，可能信号没被正确捕捉。请正对镜头重试。');
+      }
+      /* —— 方向：前摄原始帧是未镜像的 ——
+         玩家看向屏幕右侧时，虹膜在画面里其实是往左走的，所以 a1 天然为负。
+         旧版把它当"异常"直接拦下，等于让所有人都不合格。
+         正确做法是把 x 轴镜像回来：把 sx = a0 + a1·x + a2·y + a3·x·y 里的 x 换成 -x，
+         等价于 a1、a3 取反 —— 拟合残差完全不变，只是方向摆正。 */
+      var signFlip = sa[1] < 0;
+      if(signFlip){ sa[1] = -sa[1]; sa[3] = -sa[3]; }
+      Model.flipX = signFlip;   /* 必须在复测之前设好，predict 靠它把输入镜像回来 */
+
+      /* —— 量级：不做硬闸门 ——
+         a1 ≈ 1/(全屏所需的虹膜行程占眼宽的比例)。人眼宽约 30mm，屏幕两端对应的
+         虹膜位移通常只有眼宽的 5%–12%，所以 a1 落在 8–20 才是常态。
+         旧版的 a1∈[2,9] 是照合成数据反推出来的，会把大多数真人挡在门外。
+         真正判得死的只有两件事：特征有没有动态范围、复测误差落不落进容差。 */
+      var a1 = sa[1], b2 = sb[2];
+      var axs = good.map(function(v){ return v.ax; });
+      var span = Math.max.apply(null, axs) - Math.min.apply(null, axs);
+      /* 垂直跨度必须单独报。真机上垂直方向的虹膜位移比水平小一个量级，
+         b2 甚至可能为负——那是信号弱到被噪声定符号，不是「垂直反了」。
+         玩法完全不用垂直轴，但报告不能说谎，否则下次没人知道该查哪。 */
+      var ays2 = good.map(function(v){ return v.ay; });
+      var spanY = Math.max.apply(null, ays2) - Math.min.apply(null, ays2);
+      if(!isFinite(a1) || !isFinite(b2) || Math.abs(a1) < 1.5){
+        throw new Error('校准失败：水平眼动信号过弱（a1=' + r1(a1) + '，跨度 ' + span.toFixed(4) +
+          '）。请正对镜头、整张脸放进取景框中央，眼睛跟绿点时真的转动眼球（不要只转头）。');
+      }
+      if(span < 0.006){
+        throw new Error('校准失败：5 个校准点上虹膜位置几乎没有变化（跨度 ' + span.toFixed(4) +
+          '）。通常是摄像头没对着正脸，或眼睛被刘海、镜框反光挡住。');
+      }
+      Model.a = sa; Model.b = sb;
+      $('calFill').style.width = '70%';
+      return { a1:a1, b2:b2, span:span, spanY:spanY, signFlip:signFlip };
+    }).then(function(gains){
+      /* 复测：验证点与校准点错开，误差才不会算成 0 */
+      var verFeats = [];
+      var verDiag = [];
+      var c2 = Promise.resolve();
+      VER_PTS.forEach(function(pt, i){
+        c2 = c2.then(function(){
+          $('calSub').textContent = '复测点 ' + (i+1) + ' / ' + VER_PTS.length + '　采样中…';
+          $('calFill').style.width = (70 + (i+1)/VER_PTS.length*30) + '%';
+          return samplePoint(pt, 900).then(function(r){
+            verDiag.push(r ? r.n : 0);
+            if(r) verFeats.push(r);
+          });
+        });
+      });
+      return c2.then(function(){
+        hideTarget();
+        var errs = [];
+        var dxy = [];
+        verFeats.forEach(function(v){
+          var p = predict(v.ax, v.ay);
+          if(!p) return;
+          var ex = (p.sx - v.tx) * W;
+          var ey = (p.sy - v.ty) * H;
+          errs.push(Math.sqrt(ex*ex + ey*ey));
+          dxy.push({ x:ex, y:ey });
+        });
+        return { gains:gains, errs:errs, verDiag:verDiag, dxy:dxy };
+      });
+    });
+  });
+}
+
+/* ============================================================
+   9. 仪器模式：五项测量
+   ============================================================ */
+var INSTR = null;
+
+function newInstr(){
+  return {
+    calGains:null,
+    calErrs:[],          // 5 点复测误差 px
+    calErrXY:[],         // 同上，但保留带符号的 dx/dy，用来拆分系统偏移与随机抖动
+    jitterStd:0, jitterP2P:0, jitterMaxJump:0, jitterFrames:0,
+    jitterStdX:0, jitterStdY:0, jitterRStdX:0, jitterRStdY:0,
+    jitterOutlier:0, jitterJumpMed:0,
+    zoneTrials:[],       // {target, got, ms}
+    blinkHist:null, blinkCount:0, blinkMed:0, blinkP90:0,
+    openP50:0, openThr:0,
+    startedAt:now()
+  };
+}
+
+/* 第二步：静视抖动 10 秒 */
+function measureJitter(){
+  return new Promise(function(resolve){
+    var xs=[], ys=[], rxs=[], rys=[], jumps=[], last=null, t0=now();
+    onFaceHooks = { onSample:function(f, sx, sy, rawX, rawY){
+      xs.push(sx); ys.push(sy);
+      rxs.push(rawX); rys.push(rawY);
+      if(last){
+        var jx = rawX-last.x, jy = rawY-last.y;
+        jumps.push(Math.sqrt(jx*jx+jy*jy));
+      }
+      last = { x:rawX, y:rawY };
+    }};
+    $('insTip').textContent = '第二步：盯着屏幕正中央的十字，不要动，保持 10 秒';
+    $('insFix').classList.add('on');
+    (function tick(){
+      var el = (now()-t0)/1000;
+      $('insFill').style.width = Math.min(100, el/10*100) + '%';
+      $('insLive').innerHTML = '<div class="kv"><span>已采样</span><b>' + xs.length + ' 帧</b></div>' +
+        '<div class="kv"><span>剩余</span><b>' + Math.max(0, r0(10-el)) + ' 秒</b></div>';
+      if(el >= 10){
+        onFaceHooks = null;
+        $('insFix').classList.remove('on');
+        /* 一帧都没有时不能算出「抖动 0px」——那是最漂亮也最假的数字。
+           视线根本没被算出来时，抖动标准差无定义，必须标成 NaN 让报告说没有数据。 */
+        INSTR.jitterFrames = xs.length;
+        if(xs.length < 10){
+          INSTR.jitterStd = NaN; INSTR.jitterP2P = NaN; INSTR.jitterMaxJump = NaN;
+          INSTR.jitterStdX = NaN; INSTR.jitterStdY = NaN;
+          INSTR.jitterRStdX = NaN; INSTR.jitterRStdY = NaN; INSTR.jitterOutlier = NaN;
+          return resolve();
+        }
+        /* 统计必须分轴。上一版把 x 和 y 混成一个标准差，报告出 273px，
+           而三区判定（只用 x）却是 100% 命中——两个数字打架，正是因为
+           垂直轴在真机上失控（b2 为负、信号天生弱得多），把 x 的优异成绩拉平了。
+           分轴之后才能说清：水平多少、垂直多少、玩家真正体验到的是多少。 */
+        function sd(arr){
+          var m = arr.reduce(function(s,v){ return s+v; },0)/arr.length, v=0;
+          arr.forEach(function(o){ v += (o-m)*(o-m); });
+          return Math.sqrt(v/arr.length);
+        }
+        INSTR.jitterStdX  = sd(rxs);   /* 原始（滤波前）= 硬件噪声 */
+        INSTR.jitterStdY  = sd(rys);
+        INSTR.jitterRStdX = sd(xs);    /* 滤波后 = 玩家实际体验 */
+        INSTR.jitterRStdY = sd(ys);
+        var mx = rxs.reduce(function(s,v){ return s+v; },0)/rxs.length;
+        var my = rys.reduce(function(s,v){ return s+v; },0)/rys.length;
+        var vx=0, vy=0;
+        rxs.forEach(function(v){ vx += (v-mx)*(v-mx); });
+        rys.forEach(function(v){ vy += (v-my)*(v-my); });
+        INSTR.jitterStd = Math.sqrt((vx+vy)/(rxs.length*2));
+        INSTR.jitterP2P = Math.max.apply(null, rxs.concat(rys)) - Math.min.apply(null, rxs.concat(rys));
+        INSTR.jitterMaxJump = jumps.length ? Math.max.apply(null, jumps) : 0;
+        /* 离群点：单帧位移远超「典型帧间位移」的那些帧。
+           峰峰值 1096px 已经超过屏幕高度，说明抖动不是连续噪声，而是
+           少数几帧关键点跳飞。这类帧用低通滤不掉，只会被拖成一段斜坡。 */
+        var jm = jumps.length ? median(jumps) : 0;
+        var jthr = Math.max(60, jm*5);
+        INSTR.jitterOutlier = jumps.length
+          ? jumps.filter(function(v){ return v > jthr; }).length / jumps.length
+          : NaN;
+        INSTR.jitterJumpMed = jm;
+        return resolve();
+      }
+      setTimeout(tick, 100);
+    })();
+  });
+}
+
+/* 第三步：三区判定准确率，30 次 */
+function measureZones(){
+  return new Promise(function(resolve){
+    var i = 0, target = -1, t0 = 0, latched = false, startZone = -1, stall = 0;
+    var layer = $('insZones');
+    $('insTip').textContent = '第三步：屏幕会亮起青色区，把视线移到那一区（共 30 次）';
+    layer.classList.add('on');
+
+    function paint(z){
+      for(var k=0;k<3;k++) layer.children[k].classList.toggle('on', k === z);
+    }
+    function done(){
+      paint(-1); layer.classList.remove('on'); onFaceHooks = null; resolve();
+    }
+
+    function next(){
+      if(i >= 30) return done();
+      startZone = ZONE.active;
+      /* 必须等视线先被判进某一区，才知道「起点」在哪。
+         目标区永远取与起点不同的区 —— 否则玩家一动不动也有 1/3 的概率命中，
+         准确率会凭空高出三分之一，量出来的数是虚的，比没有更糟。 */
+      if(startZone < 0){
+        paint(-1);
+        if(++stall > 40) return done();   // 约 1.6 秒仍无判定 → 视线没工作，别再空转
+        return setTimeout(next, 40);
+      }
+      stall = 0;
+      var pool = [0,1,2].filter(function(z){ return z !== startZone; });
+      target = pool[Math.floor(Math.random()*pool.length)];
+      latched = false;
+      t0 = now();
+      $('insFill').style.width = (i/30*100) + '%';
+      paint(target);
+      (function tick(){
+        var el = now()-t0;
+        var got = ZONE.active;
+        $('insLive').innerHTML =
+          '<div class="kv"><span>第几次</span><b>' + (i+1) + ' / 30</b></div>' +
+          '<div class="kv"><span>起点区</span><b>' + '左中右'[startZone] + '</b></div>' +
+          '<div class="kv"><span>目标区</span><b style="color:#46ecf2">' + '左中右'[target] + '</b></div>' +
+          '<div class="kv"><span>当前判定</span><b>' + (got<0?'--':'左中右'[got]) + '</b></div>';
+        if(!latched && got === target){
+          latched = true;
+          INSTR.zoneTrials.push({ target:target, got:got, ms:Math.round(el) });
+          return setTimeout(function(){ paint(-1); i++; next(); }, 260);
+        }
+        if(el >= 1600){
+          INSTR.zoneTrials.push({ target:target, got:got, ms:-1 });
+          return setTimeout(function(){ paint(-1); i++; next(); }, 120);
+        }
+        setTimeout(tick, 40);
+      })();
+    }
+    onFaceHooks = null;
+    next();
+  });
+}
+
+/* 第四步：自然眨眼基线 30 秒 */
+function measureBlinkBaseline(){
+  return new Promise(function(resolve){
+    var t0 = now();
+    BLINK.openBuf = [];
+    recOpen = true;
+    $('insTip').textContent = '第四步：自然地看着屏幕，正常眨眼，30 秒。不要刻意控制。';
+    (function tick(){
+      var el = (now()-t0)/1000;
+      $('insFill').style.width = Math.min(100, el/30*100) + '%';
+      $('insLive').innerHTML = '<div class="kv"><span>已采集</span><b>' + BLINK.openBuf.length + ' 帧</b></div>' +
+        '<div class="kv"><span>剩余</span><b>' + Math.max(0, r0(30-el)) + ' 秒</b></div>';
+      if(el >= 30){
+        recOpen = false;
+        var vals = BLINK.openBuf.map(function(o){ return o.v; });
+        var p50 = pct(vals, 0.50);
+        var p5  = pct(vals, 0.05);
+        INSTR.openP50 = p50;
+        /* 阈值取睁眼基线的 55%，夹在 0.05–0.16 之间。这是逐用户标定的核心。 */
+        var thr = clamp(p50*0.55, 0.05, 0.16);
+        INSTR.openThr = thr;
+        BLINK.thr = thr;
+        BLINK.thrSource = '基线标定（睁眼 P50=' + r1(p50*1000)/1000 + '）';
+
+        /* 用新阈值重扫 open 序列，得到眨眼事件与时长分布 */
+        var evs = [], inB = false, st = 0, lastT = 0;
+        BLINK.openBuf.forEach(function(o){
+          if(o.v < thr){
+            if(!inB){ inB = true; st = o.t; }
+          } else {
+            if(inB){ inB = false; var d = o.t - st; if(d >= 40) evs.push(d); }
+          }
+          lastT = o.t;
+        });
+        if(inB) evs.push(lastT - st);
+
+        var hist = { '<80':0, '80-120':0, '120-200':0, '200-400':0, '>400':0 };
+        evs.forEach(function(d){
+          if(d < 80) hist['<80']++;
+          else if(d < 120) hist['80-120']++;
+          else if(d < 200) hist['120-200']++;
+          else if(d < 400) hist['200-400']++;
+          else hist['>400']++;
+        });
+        INSTR.blinkHist = hist;
+        INSTR.blinkCount = evs.length;
+        INSTR.blinkMed = median(evs);
+        INSTR.blinkP90 = pct(evs, 0.90);
+        BLINK.naturalP90 = INSTR.blinkP90;
+        BLINK.events = [];
+        $('stThr').textContent = BLINK.thr.toFixed(4) + '（基线标定）';
+        return resolve();
+      }
+      setTimeout(tick, 100);
+    })();
+  });
+}
+
+/* 汇总：给判断 */
+function instrVerdict(){
+  var e = INSTR.calErrs;
+  if(!e.length) return { mean:0, med:0, p95:0, max:0, tier:'无数据', needDegrade:true, bias:0, noise:0 };
+  var mean = e.reduce(function(s,v){ return s+v; },0)/e.length;
+  var med  = median(e);
+  var p95  = pct(e, 0.95);
+  var max  = Math.max.apply(null, e);
+  var tier, need;
+  if(mean <= 200){ tier = '≤200px · 可继续推进'; need = false; }
+  else if(mean <= 280){ tier = '200–280px · 擦边上限，建议保留降级'; need = true; }
+  else { tier = '>280px · 超出方案可行域'; need = true; }
+
+  /* 误差必须拆成两块，否则一定会得出错误结论：
+     bias（系统偏移）= 5 个复测点偏移向量的平均。它把整张画面整体平移，
+       而三区判定只看「相对顺序」，平移不改变顺序 —— 玩法可以完全吸收。
+     noise（随机抖动）= 各点相对该平均偏移的偏离。这个才是真正吞掉容差的部分。
+     实测出现过「总误差 238px，三区却 100% 命中」，正是 bias 大、noise 小的情形。
+     注意：只有 5 个复测点，bias 估计本身有偏（会吸收一部分真实误差），只看量级。 */
+  var d = INSTR.calErrXY || [];
+  var bias = 0, noise = 0;
+  if(d.length >= 2){
+    var bx = 0, by = 0;
+    d.forEach(function(o){ bx += o.x; by += o.y; });
+    bx /= d.length; by /= d.length;
+    bias = Math.sqrt(bx*bx + by*by);
+    var vv = 0;
+    d.forEach(function(o){ var px = o.x-bx, py = o.y-by; vv += px*px + py*py; });
+    noise = Math.sqrt(vv/d.length);
+  }
+  return { mean:mean, med:med, p95:p95, max:max, tier:tier, needDegrade:need, bias:bias, noise:noise };
+}
+
+function zoneStats(){
+  var t = INSTR.zoneTrials;
+  if(!t.length) return { acc:0, n:0, lat:0, cm:[[0,0,0],[0,0,0],[0,0,0]], miss:0 };
+  var cm = [[0,0,0],[0,0,0],[0,0,0]];
+  var hit=0, lat=[], miss=0;
+  t.forEach(function(r){
+    var g = r.got < 0 ? -1 : r.got;
+    if(g >= 0) cm[r.target][g]++;
+    if(g === r.target){ hit++; if(r.ms >= 0) lat.push(r.ms); }
+    else miss++;
+  });
+  return { acc:hit/t.length, n:t.length, lat: lat.length? median(lat):-1, cm:cm, miss:miss };
+}
+
+function buildReport(){
+  var v = instrVerdict();
+  var z = zoneStats();
+  var L = [];
+  L.push('《一个眼神杀死你》M1 真机测量报告');
+  L.push('时间 ' + new Date().toLocaleString('zh-CN'));
+  L.push('设备 ' + navigator.userAgent);
+  L.push('视口 ' + W + '×' + H + ' (DPR ' + DPR + ')');
+  L.push('');
+  L.push('【1 校准误差】复测 ' + INSTR.calErrs.length + ' 点（与校准点错开）');
+  L.push('  逐点 px: ' + INSTR.calErrs.map(function(x){ return r0(x); }).join(' / '));
+  L.push('  均值 ' + r0(v.mean) + 'px   中位 ' + r0(v.med) + 'px   P95 ' + r0(v.p95) + 'px   最大 ' + r0(v.max) + 'px');
+  L.push('  拆分 系统偏移 ' + r1(v.bias) + 'px（可被相对判定吸收）　随机抖动 ' + r1(v.noise) + 'px（真正吃容差）');
+  if(INSTR.calGains){
+    var g = INSTR.calGains;
+    L.push('  增益 a1=' + r1(g.a1) + '（真人常见 8–20）  b2=' + r1(g.b2));
+    L.push('  水平跨度 Δax=' + g.span.toFixed(4) + '（占眼宽比例，<0.006 视为无信号）' +
+      '　x 轴镜像=' + (g.signFlip ? '已翻转（前摄正常现象）' : '未翻转'));
+    if(g.spanY !== undefined){
+      L.push('  垂直跨度 Δay=' + g.spanY.toFixed(4) + (g.b2 < 0
+        ? '　【垂直轴反向或过弱】b2 为负，说明垂直信号弱到被噪声定了符号。本作玩法只用水平轴，不影响三区；但不可据此做任何上下判定。'
+        : ''));
+    }
+  }
+  L.push('  判定 ' + v.tier);
+  L.push('');
+  L.push('【2 静视抖动】10 秒，' + INSTR.jitterFrames + ' 帧');
+  L.push('  水平（决定三区能不能用）　原始 ' + fmtPx(INSTR.jitterStdX) + '　中值+低通后 ' + fmtPx(INSTR.jitterRStdX));
+  L.push('  垂直（本作玩法不使用）　　原始 ' + fmtPx(INSTR.jitterStdY) + '　中值+低通后 ' + fmtPx(INSTR.jitterRStdY));
+  L.push('  混合标准差 ' + fmtPx(INSTR.jitterStd) + '   峰峰值 ' + fmtPx(INSTR.jitterP2P) + '   单帧最大跳变 ' + fmtPx(INSTR.jitterMaxJump));
+  L.push('  离群帧占比 ' + fmtPct(INSTR.jitterOutlier) +
+    '（判据：单帧位移 > max(60, 5×中位帧间位移 ' + r0(INSTR.jitterJumpMed) + 'px)）');
+  if(!isFinite(INSTR.jitterStd)) L.push('  【注意】第二步只采到 ' + INSTR.jitterFrames + ' 帧，抖动值无法计算，不是「抖动为 0」。');
+  else if(INSTR.jitterOutlier > 0.02) L.push('  【判读】离群帧超过 2%：抖动主要来自关键点跳飞，不是连续噪声。游戏内已用 3 帧中值剔除这类帧。');
+  L.push('');
+  L.push('【3 三区判定】' + z.n + ' 次，命中 ' + Math.round(z.acc*100) + '%，判定延迟中位 ' + z.lat + 'ms');
+  L.push('  混淆矩阵（行=目标 左/中/右，列=判定 左/中/右）');
+  z.cm.forEach(function(row, i){
+    L.push('   ' + '左中右'[i] + '  ' + row.join('  '));
+  });
+  L.push('');
+  L.push('【4 自然眨眼基线】30 秒，共 ' + INSTR.blinkCount + ' 次，中位 ' + r0(INSTR.blinkMed) + 'ms，P90 ' + r0(INSTR.blinkP90) + 'ms');
+  if(INSTR.blinkHist){
+    L.push('  时长分布 <80:' + INSTR.blinkHist['<80'] + '  80-120:' + INSTR.blinkHist['80-120'] +
+      '  120-200:' + INSTR.blinkHist['120-200'] + '  200-400:' + INSTR.blinkHist['200-400'] +
+      '  >400:' + INSTR.blinkHist['>400']);
+  }
+  L.push('  睁眼基线 P50 ' + INSTR.openP50.toFixed(4) + ' → 本机眨眼阈值 ' + INSTR.openThr.toFixed(4));
+  L.push('');
+  L.push('【5 结论】');
+  L.push('  ' + v.tier);
+  L.push('  是否需降级模式兜底：' + (v.needDegrade ? '是' : '否'));
+  L.push('  自然眨眼 P90 = ' + r0(INSTR.blinkP90) + 'ms，此值用于标记「可能非意图处决」');
+  L.push('  真正决定玩法成立的是随机抖动 ' + r1(v.noise) + 'px，不是总误差 ' + r0(v.mean) + 'px。');
+  if(z.acc >= 0.9 && v.mean > 200){
+    L.push('  【关键】总误差已进擦边带，三区命中却达 ' + Math.round(z.acc*100) + '%：');
+    L.push('         说明「离散判定」（在哪个区）对精度的要求，远低于「连续定位」（盯住某点）。');
+    L.push('         不要用连续定位的误差去否定离散玩法的可行性。');
+  }
+  if(isFinite(INSTR.jitterOutlier) && INSTR.jitterOutlier > 0.05){
+    L.push('  【建议】离群帧 ' + fmtPct(INSTR.jitterOutlier) + ' 偏高，说明真机上关键点检测不稳；');
+    L.push('         这类机型的真实可用性取决于中值剔除后的表现，请对照第 2 节的「中值+低通后」数值。');
+  }
+  L.push('');
+  L.push('—— 以上数据全部在本机计算，未上传 ——');
+  return L.join('\n');
+}
+
+function showReport(){
+  var v = instrVerdict();
+  var z = zoneStats();
+  var cls = v.mean <= 200 ? '#2fd6a6' : (v.mean <= 280 ? '#e8b84b' : '#e8544f');
+  $('repSummary').innerHTML =
+    '<div style="font-size:12px;color:#7b8b9f;margin-bottom:6px">校准误差均值</div>' +
+    '<div class="big" style="color:' + cls + '">' + r0(v.mean) + '<span style="font-size:15px"> px</span></div>' +
+    '<div class="kv" style="margin-top:8px"><span>判定</span><b style="color:' + cls + '">' + v.tier + '</b></div>' +
+    '<div class="kv"><span>三区命中率</span><b>' + Math.round(z.acc*100) + '%</b></div>' +
+    '<div class="kv"><span>系统偏移</span><b>' + r0(v.bias) + ' px</b></div>' +
+    '<div class="kv"><span>随机抖动</span><b>' + r0(v.noise) + ' px</b></div>' +
+    '<div class="kv"><span>水平抖动·滤波后</span><b>' + fmtPx(INSTR.jitterRStdX) + '</b></div>' +
+    '<div class="kv"><span>自然眨眼 P90</span><b>' + r0(INSTR.blinkP90) + ' ms</b></div>' +
+    '<div class="kv"><span>本机眨眼阈值</span><b>' + INSTR.openThr.toFixed(3) + '</b></div>';
+  $('repText').value = buildReport();
+  S.phase = 'report';
+  showScreen('scrReport');
+}
+
+/* ============================================================
+   10. 修仙 · 常量 / 调色 / 波次
+   ============================================================ */
+var P = {
+  chargeRate: 220,      // +/s  剑意累积（不可调，精度底线）
+  chargeMax: 100,
+  decay: 90,            // −/s  视线移开后的衰减
+  engraveMs: 4000,      // 刻痕存续：M1 的「锁定永久」是玩法无趣的根因，
+                        //   锁一个再慢慢来，压力归零。改成会淡去才有抢的压力
+  execMs: 200,          // 垂目·斩（真机自然眨眼 P90=81ms，2.5 倍余量）
+  shieldMs: 100,        // 垂目·守
+  telegraph: 800,       // 近身前摇（真机三区判定延迟中位 427ms）
+  enemySpeed: 75,       // px/s
+  spawnGap: 2200,
+  runMs: 90000,         // 一局 90 秒 = 三波 × 30 秒（策划案生理上限）
+  waveMs: 30000,
+  hp: 5,                // 道心（惩罚源从 1 个变 3 个，从 4 提到 5）
+  seerDwell: 600,       // 窥天者：视线停留超时即反噬
+  seerDrift: 3500,      // 窥天者换区间隔
+  bossPre: 400,         // 心魔垂目前兆
+  bossWin: 250,         // 心魔判定窗口半宽
+  bossNeed: 3,          // 斩中心魔次数
+  bossOver: 400         // 闭眼超此时长被反杀
+};
+
+var PAL = {
+  ink:    '#07090c',
+  ink2:   '#0b0e13',
+  moon:   '#e8eef7',
+  gold:   '#e8b64f',
+  goldDk: '#8a6a28',
+  blood:  '#c2433a',
+  jade:   '#4fd1a5',
+  shadow: '#12161a',
+  evil:   '#ff4d4d',
+  violet: '#8b6bff',
+  fogC:   'rgba(150,170,200,1)'
+};
+
+var WAVE = [
+  { name:'剑 路', verb:'扫', tip:'扫过几区，就斩几区', t0:0,     t1:30000 },
+  { name:'窥 天', verb:'避', tip:'那东西不能看，可你还得看别的', t0:30000, t1:60000 },
+  { name:'心 魔', verb:'忍', tip:'它先垂目，你才斩得动', t0:60000, t1:90000 }
+];
+
+/* ============================================================
+   11. 视觉引擎：离屏纹理 / 三层视差 / 粒子 / 演出
+   ============================================================ */
+var TEX = {};
+
+function mkCanvas(w, h){
+  var c = document.createElement('canvas');
+  c.width = Math.max(1, Math.floor(w));
+  c.height = Math.max(1, Math.floor(h));
+  return c;
+}
+
+function hx(h){
+  h = h.replace('#','');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+function mix(a, b, k){
+  k = clamp(k, 0, 1);
+  var A = hx(a), B = hx(b);
+  return 'rgb(' + Math.round(A[0]+(B[0]-A[0])*k) + ',' + Math.round(A[1]+(B[1]-A[1])*k) + ',' + Math.round(A[2]+(B[2]-A[2])*k) + ')';
+}
+function rgba(h, a){
+  var c = hx(h);
+  return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
+}
+
+function buildTex(){
+  /* 光晕：所有眼睛发光、灵光浮尘都复用这一张。
+     运行时逐帧 createRadialGradient 在手机上是主要掉帧来源，一律预渲染。 */
+  var g = mkCanvas(128,128), gc = g.getContext('2d');
+  var rg = gc.createRadialGradient(64,64,0, 64,64,64);
+  rg.addColorStop(0,   'rgba(255,255,255,1)');
+  rg.addColorStop(0.28,'rgba(255,255,255,0.42)');
+  rg.addColorStop(0.62,'rgba(255,255,255,0.10)');
+  rg.addColorStop(1,   'rgba(255,255,255,0)');
+  gc.fillStyle = rg; gc.fillRect(0,0,128,128);
+  TEX.glow = g;
+
+  /* 云雾（冷白）与魔雾（紫） */
+  function fogOf(r,g2,b){
+    var cv = mkCanvas(256,256), c = cv.getContext('2d');
+    var rr = c.createRadialGradient(128,128,10, 128,128,128);
+    rr.addColorStop(0,   'rgba('+r+','+g2+','+b+',0.55)');
+    rr.addColorStop(0.45,'rgba('+r+','+g2+','+b+',0.22)');
+    rr.addColorStop(1,   'rgba('+r+','+g2+','+b+',0)');
+    c.fillStyle = rr; c.fillRect(0,0,256,256);
+    return cv;
+  }
+  TEX.fog   = fogOf(150,170,200);
+  TEX.fogV  = fogOf(120,90,200);
+
+  /* 水墨远山：横向可平铺的两层山脊，宽度 1.6 屏 */
+  var mw = Math.ceil(W*1.6), mh = Math.ceil(H*0.62);
+  var mc = mkCanvas(mw, mh), mg = mc.getContext('2d');
+  function ridge(base, amp, color, seed, n){
+    var s = seed, pts = [], i;
+    function rnd(){ s = (s*9301 + 49297) % 233280; return s/233280; }
+    for(i=0;i<=n;i++){
+      var x = mw*i/n;
+      var y = base - Math.sin(i*0.62 + seed*0.01)*amp*0.45 - rnd()*amp;
+      pts.push([x,y]);
+    }
+    mg.beginPath();
+    mg.moveTo(0, mh);
+    mg.lineTo(pts[0][0], pts[0][1]);
+    for(i=0;i<pts.length-1;i++){
+      var mx = (pts[i][0]+pts[i+1][0])/2, my = (pts[i][1]+pts[i+1][1])/2;
+      mg.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
+    }
+    mg.lineTo(mw, mh);
+    mg.closePath();
+    mg.fillStyle = color;
+    mg.fill();
+  }
+  ridge(mh*0.62, mh*0.22, 'rgba(24,32,44,0.95)', 7, 30);
+  ridge(mh*0.82, mh*0.16, 'rgba(13,18,26,0.98)', 23, 26);
+  TEX.mount = mc;
+
+  /* 竖向灵柱：底亮顶透的柔化竖条，给三区各一条「气场」 */
+  (function(){
+    var pl = mkCanvas(128, 512), c = pl.getContext('2d');
+    var lg = c.createLinearGradient(0, 512, 0, 0);
+    lg.addColorStop(0,   'rgba(122,166,214,0.34)');
+    lg.addColorStop(0.45,'rgba(104,146,196,0.12)');
+    lg.addColorStop(1,   'rgba(90,130,180,0)');
+    c.fillStyle = lg; c.fillRect(0,0,128,512);
+    var hg = c.createLinearGradient(0,0,128,0);
+    hg.addColorStop(0,   'rgba(0,0,0,1)');
+    hg.addColorStop(0.5, 'rgba(0,0,0,0)');
+    hg.addColorStop(1,   'rgba(0,0,0,1)');
+    c.globalCompositeOperation = 'destination-out';
+    c.fillStyle = hg; c.fillRect(0,0,128,512);
+    TEX.pillar = pl;
+  })();
+
+  /* 暗角：全屏一次绘制，避免运行时建渐变 */
+  var vg = mkCanvas(W, H), vc = vg.getContext('2d');
+  var vr = vc.createRadialGradient(W/2, H*0.5, Math.min(W,H)*0.28, W/2, H*0.5, Math.max(W,H)*0.72);
+  vr.addColorStop(0, 'rgba(0,0,0,0)');
+  vr.addColorStop(1, 'rgba(0,0,0,0.72)');
+  vc.fillStyle = vr; vc.fillRect(0,0,W,H);
+  TEX.vig = vg;
+}
+buildTex();
+window.addEventListener('resize', function(){ setTimeout(buildTex, 60); });
+
+var VIS = {
+  t:0, bgX:0, bgX2:0,
+  mist:[], motes:[], slash:[], ripple:[], frag:[],
+  glitch:0, innerT:0,
+  low:false, lowT:0           // 自适应降级：连续掉帧就减粒子
+};
+
+function resetVis(){
+  VIS.t = 0; VIS.bgX = 0; VIS.bgX2 = 0;
+  VIS.mist = []; VIS.motes = []; VIS.slash = []; VIS.ripple = []; VIS.frag = [];
+  VIS.glitch = 0; VIS.innerT = 0;
+  var i;
+  for(i=0;i<5;i++){
+    VIS.mist.push({
+      x: Math.random()*W, y: Math.random()*H,
+      r: 0.55 + Math.random()*0.55,
+      sp: 4 + Math.random()*9,
+      ph: Math.random()*6.28,
+      a: 0.045 + Math.random()*0.055
+    });
+  }
+  for(i=0;i<22;i++){
+    VIS.motes.push({
+      x: Math.random()*W, y: Math.random()*H,
+      r: 0.7 + Math.random()*1.6,
+      sp: 5 + Math.random()*14,
+      ph: Math.random()*6.28,
+      a: 0.10 + Math.random()*0.38
+    });
+  }
+}
+resetVis();
+
+function addSlash(x1,y1,x2,y2,col,dur){
+  VIS.slash.push({ x1:x1, y1:y1, x2:x2, y2:y2, t:0, dur:dur||0.34, col:col||PAL.moon });
+}
+function addRipple(x,y,r0,r1,col,dur){
+  VIS.ripple.push({ x:x, y:y, r:r0, r1:r1, t:0, dur:dur||0.52, col:col||PAL.gold });
+}
+function addFrag(x,y,n,col,power){
+  for(var i=0;i<n;i++){
+    var a = Math.random()*Math.PI*2;
+    var sp = (30 + Math.random()*110) * (power||1);
+    VIS.frag.push({
+      x:x, y:y,
+      vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 50,
+      r:0.9 + Math.random()*2.2,
+      t:0, dur:0.62 + Math.random()*0.5,
+      col: col || PAL.shadow
+    });
+  }
+}
+
+function drawBackdrop(dt){
+  VIS.t += dt*1000;
+
+  /* 底：墨 */
+  ctx.fillStyle = PAL.ink;
+  ctx.fillRect(-60,-60,W+120,H+120);
+
+  /* 远山（最远层，0.018 屏宽/秒） */
+  if(TEX.mount){
+    VIS.bgX -= dt*W*0.018;
+    var mw = TEX.mount.width;
+    if(VIS.bgX <= -mw) VIS.bgX += mw;
+    var my = H*0.16;
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(TEX.mount, VIS.bgX, my);
+    ctx.drawImage(TEX.mount, VIS.bgX + mw, my);
+    ctx.globalAlpha = 1;
+  }
+
+  /* 三区灵柱：画面下半不再是一片死黑 */
+  if(TEX.pillar){
+    for(i=0;i<3;i++){
+      var px = (i + 0.5)*W/3;
+      var pw = W/3 * 1.15;
+      var ph = H*0.66;
+      ctx.globalAlpha = 0.55 + 0.30*Math.sin(VIS.t/2700 + i*2.1);
+      ctx.drawImage(TEX.pillar, px - pw/2, H - ph, pw, ph);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* 中景云雾：向上飘 + 横向正弦漂移 */
+  var i, m, sz;
+  var mistN = VIS.low ? 3 : VIS.mist.length;
+  for(i=0;i<mistN;i++){
+    m = VIS.mist[i];
+    m.y -= m.sp*dt;
+    if(m.y < -m.r*W*0.5){ m.y = H + m.r*W*0.5; m.x = Math.random()*W; }
+    sz = m.r * W * 1.25;
+    ctx.globalAlpha = m.a;
+    ctx.drawImage(TEX.fog, m.x - sz/2 + Math.sin(VIS.t/3200 + m.ph)*34, m.y - sz/2, sz, sz);
+  }
+  ctx.globalAlpha = 1;
+
+  /* 近景灵光浮尘 */
+  var moteN = VIS.low ? 10 : VIS.motes.length;
+  for(i=0;i<moteN;i++){
+    m = VIS.motes[i];
+    m.y -= m.sp*dt;
+    if(m.y < -12){ m.y = H + 12; m.x = Math.random()*W; }
+    var a = m.a * (0.45 + 0.55*Math.sin(VIS.t/760 + m.ph));
+    if(a <= 0.01) continue;
+    sz = m.r * 7;
+    ctx.globalAlpha = a;
+    ctx.drawImage(TEX.glow, m.x - sz/2 + Math.sin(VIS.t/2400 + m.ph)*7, m.y - sz/2, sz, sz);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawVignette(){
+  if(TEX.vig){
+    ctx.globalAlpha = 0.92;
+    ctx.drawImage(TEX.vig, 0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawFx(dt){
+  var i, s, k, a;
+
+  /* 斩痕：主笔 + 飞白（毛笔的干笔感） */
+  for(i=VIS.slash.length-1;i>=0;i--){
+    s = VIS.slash[i];
+    s.t += dt;
+    k = s.t / s.dur;
+    if(k >= 1){ VIS.slash.splice(i,1); continue; }
+    a = 1 - k;
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = s.col;
+    ctx.lineWidth = 3.4 * (1 - k*0.65);
+    ctx.beginPath(); ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x2, s.y2); ctx.stroke();
+    ctx.globalAlpha = a*0.45;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(s.x1+2.5, s.y1+2); ctx.lineTo(s.x2+2.5, s.y2+2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  /* 剑气涟漪 */
+  for(i=VIS.ripple.length-1;i>=0;i--){
+    s = VIS.ripple[i];
+    s.t += dt;
+    k = s.t / s.dur;
+    if(k >= 1){ VIS.ripple.splice(i,1); continue; }
+    var r = s.r + (s.r1 - s.r)*k;
+    ctx.globalAlpha = (1-k)*0.7;
+    ctx.strokeStyle = s.col;
+    ctx.lineWidth = 1.6*(1-k) + 0.4;
+    ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  /* 崩解墨点 */
+  for(i=VIS.frag.length-1;i>=0;i--){
+    s = VIS.frag[i];
+    s.t += dt;
+    if(s.t >= s.dur){ VIS.frag.splice(i,1); continue; }
+    s.x += s.vx*dt;
+    s.y += s.vy*dt;
+    s.vy += 46*dt;
+    s.vx *= 0.97;
+    k = s.t / s.dur;
+    ctx.globalAlpha = (1-k)*0.85;
+    ctx.fillStyle = s.col;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r*(1-k*0.5), 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  if(VIS.glitch > 0) VIS.glitch -= dt;
+}
+
+/* 闭眼 = 内视。不是一块死黑：极暗墨底 + 一点金光 + 极淡经脉。
+   玩法上仍然看不见战场（这是「收神识入体」的代价），但不刺眼、不空。 */
+function drawInnerView(){
+  ctx.fillStyle = '#04050a';
+  ctx.fillRect(-60,-60,W+120,H+120);
+
+  var cx = W/2, cy = H*0.5;
+  var pulse = 0.75 + 0.25*Math.sin(VIS.t/900);
+
+  ctx.globalAlpha = 0.30 * pulse;
+  var s = 190;
+  ctx.drawImage(TEX.glow, cx - s/2, cy - s/2, s, s);
+  ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = 'rgba(232,182,79,0.075)';
+  ctx.lineWidth = 1;
+  var i;
+  for(i=0;i<5;i++){
+    var yy = cy - 150 + i*76;
+    ctx.beginPath();
+    ctx.moveTo(0, yy);
+    ctx.bezierCurveTo(W*0.30, yy - 26, W*0.62, yy + 30, W, yy - 8);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(232,182,79,0.05)';
+  for(i=0;i<4;i++){
+    var xx = W*0.16 + i*W*0.23;
+    ctx.beginPath();
+    ctx.moveTo(xx, 0);
+    ctx.bezierCurveTo(xx - 26, H*0.34, xx + 30, H*0.68, xx - 10, H);
+    ctx.stroke();
+  }
+
+  ctx.textAlign = 'center';
+  ctx.font = '500 13px "Songti SC","STSong","Noto Serif SC",serif';
+  ctx.fillStyle = 'rgba(232,182,79,' + (0.18 + 0.12*pulse) + ')';
+  ctx.fillText('内 视', cx, cy + 132);
+}
+
+/* ============================================================
+   12. 着色纹理（金瞳 / 各色光晕）—— 与尺寸无关，只生成一次
+   ============================================================ */
+function tintGlow(hex, core){
+  var rgb = hx(hex);
+  var cv = mkCanvas(128,128), c = cv.getContext('2d');
+  var rr = c.createRadialGradient(64,64,0, 64,64,64);
+  rr.addColorStop(0,    'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',1)');
+  rr.addColorStop(core||0.30, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.40)');
+  rr.addColorStop(0.66, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.085)');
+  rr.addColorStop(1,    'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0)');
+  c.fillStyle = rr; c.fillRect(0,0,128,128);
+  return cv;
+}
+TEX.fogR = (function(){
+  var cv = mkCanvas(256,256), c = cv.getContext('2d');
+  var rr = c.createRadialGradient(128,128,8, 128,128,128);
+  rr.addColorStop(0,   'rgba(168,44,40,0.50)');
+  rr.addColorStop(0.48,'rgba(122,26,24,0.20)');
+  rr.addColorStop(1,   'rgba(96,18,16,0)');
+  c.fillStyle = rr; c.fillRect(0,0,256,256);
+  return cv;
+})();
+TEX.gGold = tintGlow(PAL.gold);
+TEX.gRed  = tintGlow(PAL.evil);
+TEX.gJade = tintGlow(PAL.jade);
+TEX.gViol = tintGlow(PAL.violet, 0.22);
+TEX.gMoon = tintGlow(PAL.moon);
+
+/* 金瞳：心魔的眼球。运行时逐帧建渐变太贵，整只眼的虹膜就是这一张贴图缩放。 */
+(function(){
+  var cv = mkCanvas(160,160), c = cv.getContext('2d');
+  var rr = c.createRadialGradient(80,80,3, 80,80,80);
+  rr.addColorStop(0,    'rgba(255,248,224,1)');
+  rr.addColorStop(0.26, 'rgba(233,186,86,0.98)');
+  rr.addColorStop(0.62, 'rgba(146,96,30,0.92)');
+  rr.addColorStop(1,    'rgba(52,32,10,0.88)');
+  c.fillStyle = rr;
+  c.beginPath(); c.arc(80,80,80,0,Math.PI*2); c.fill();
+  c.strokeStyle = 'rgba(255,226,160,0.35)';
+  c.lineWidth = 2;
+  for(var i=0;i<26;i++){
+    var a0 = i*0.242;
+    c.beginPath();
+    c.moveTo(80+Math.cos(a0)*30, 80+Math.sin(a0)*30);
+    c.lineTo(80+Math.cos(a0)*76, 80+Math.sin(a0)*76);
+    c.stroke();
+  }
+  TEX.iris = cv;
+})();
+
+/* ============================================================
+   13. 实体绘制
+   ============================================================ */
+
+/* 魔修：人形剪影 + 一双赤目。
+   让画面活过来的关键不是造型，是**瞳孔跟着你的视点转**——
+   你看向哪，它的眼球就转到哪，「凝视」从此不只是进度条。 */
+function drawCultivator(e, cx, cy, t){
+  var ch = clamp(e.cd/P.chargeMax, 0, 1);
+  var locked = !!e.lock;
+  var breath = Math.sin(t/640 + e.seed)*1.2;
+  var px = clamp(e.pupilX, -1, 1);
+  var eyeCol = locked ? PAL.gold : mix(PAL.evil, PAL.gold, ch*0.8);
+
+  ctx.save();
+  ctx.translate(cx, cy + breath);
+  ctx.scale(1.18, 1.18);
+
+  /* 落地影 */
+  ctx.globalAlpha = 0.42;
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(0, 2, 16, 4.2, 0, 0, Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  /* 剑纹：蓄力时绕着头旋转的三道短弧（只在蓄力中/刻痕后出现） */
+  if(ch > 0.06 || locked){
+    var n = locked ? 4 : 3;
+    for(var i=0;i<n;i++){
+      var a0 = t/460 + i*(Math.PI*2/n);
+      ctx.beginPath();
+      ctx.arc(0, -30, 26 + (locked?3:0), a0, a0 + 0.62);
+      ctx.strokeStyle = rgba(PAL.gold, (locked?0.55:0.30) * (0.4 + 0.6*ch));
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+    }
+  }
+
+  /* 长袍 */
+  ctx.beginPath();
+  ctx.moveTo(-8, -41);
+  ctx.quadraticCurveTo(-15, -22, -19, 0);
+  ctx.lineTo(19, 0);
+  ctx.quadraticCurveTo(15, -22, 8, -41);
+  ctx.closePath();
+  ctx.fillStyle = locked ? '#1a1308' : PAL.shadow;
+  ctx.fill();
+  ctx.strokeStyle = locked ? rgba(PAL.gold, 0.55) : 'rgba(96,116,140,0.30)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  /* 衣褶 */
+  ctx.beginPath();
+  ctx.moveTo(0, -36); ctx.lineTo(0, 0);
+  ctx.strokeStyle = locked ? rgba(PAL.gold,0.20) : 'rgba(120,145,170,0.10)';
+  ctx.stroke();
+
+  /* 头 */
+  ctx.beginPath();
+  ctx.arc(0, -47, 8.6, 0, Math.PI*2);
+  ctx.fillStyle = locked ? '#1a1308' : PAL.shadow;
+  ctx.fill();
+  ctx.strokeStyle = locked ? rgba(PAL.gold,0.55) : 'rgba(96,116,140,0.30)';
+  ctx.stroke();
+
+  /* 刻痕：全身金色裂纹 */
+  if(locked){
+    var fl = 0.55 + 0.45*Math.sin(t/130 + e.seed);
+    ctx.strokeStyle = rgba(PAL.gold, 0.35 + 0.45*fl);
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-5, -50); ctx.lineTo(-2, -40); ctx.lineTo(-7, -30); ctx.lineTo(-3, -18);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(6, -48); ctx.lineTo(3, -36); ctx.lineTo(8, -26); ctx.lineTo(4, -12);
+    ctx.stroke();
+  }
+
+  /* 一双赤目 */
+  drawSmallEye(-4.3, -48.6, px, eyeCol, ch, locked);
+  drawSmallEye( 4.3, -48.6, px, eyeCol, ch, locked);
+
+  ctx.restore();
+}
+
+function drawSmallEye(ex, ey, px, col, ch, locked){
+  var r = 2.7 + 1.2*ch + (locked?0.6:0);
+  ctx.beginPath();
+  ctx.arc(ex, ey, r + 1.7, 0, Math.PI*2);
+  ctx.fillStyle = '#000';
+  ctx.fill();
+
+  var ix = ex + px * r * 0.55;
+  ctx.beginPath();
+  ctx.arc(ix, ey, r, 0, Math.PI*2);
+  ctx.fillStyle = col;
+  ctx.fill();
+
+  var gs = 24 + 17*ch;
+  ctx.globalAlpha = 0.42 + 0.48*ch;
+  ctx.drawImage(locked ? TEX.gGold : TEX.gRed, ix - gs/2, ey - gs/2, gs, gs);
+  ctx.globalAlpha = 1;
+}
+
+/* 窥天者：巨大竖瞳。它是环境，不可杀，只能避开。 */
+function drawSeer(s, cx, cy, t){
+  var pulse = 0.5 + 0.5*Math.sin(t/520);
+  var danger = clamp(s.dwell / P.seerDwell, 0, 1);
+
+  var i, sz;
+  for(i=0;i<3;i++){
+    sz = 190 + i*78;
+    ctx.globalAlpha = 0.12 + 0.055*i + danger*0.13;
+    ctx.drawImage(TEX.fogV, cx - sz/2 + Math.sin(t/1500 + i*1.7)*22, cy - sz/2, sz, sz);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 35, 63, 0, 0, Math.PI*2);
+  ctx.fillStyle = '#08060f';
+  ctx.fill();
+  ctx.strokeStyle = rgba(PAL.violet, 0.42 + 0.40*pulse);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 26, 51, 0, 0, Math.PI*2);
+  ctx.strokeStyle = rgba(PAL.violet, 0.20);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 5.5 + pulse*2 + danger*4.5, 35 - danger*9, 0, 0, Math.PI*2);
+  ctx.fillStyle = rgba(PAL.violet, 0.82);
+  ctx.fill();
+
+  var gs = 130 + 70*danger;
+  ctx.globalAlpha = 0.26 + 0.44*danger;
+  ctx.drawImage(TEX.gViol, cx - gs/2, cy - gs/2, gs, gs);
+  ctx.globalAlpha = 1;
+
+  /* 危险环：你还能看它多久 */
+  if(danger > 0.04){
+    ctx.beginPath();
+    ctx.arc(cx, cy, 72, -Math.PI/2, -Math.PI/2 + Math.PI*2*(1-danger));
+    ctx.strokeStyle = rgba(PAL.blood, 0.85);
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  ctx.textAlign = 'center';
+  ctx.font = '500 11px "Songti SC","STSong",serif';
+  ctx.fillStyle = rgba(PAL.violet, 0.55 + 0.35*pulse);
+  ctx.fillText('不可直视', cx, cy + 92);
+}
+
+/* 心魔：一双丹凤巨眼，与你对瞪。 */
+function drawBoss(b, t){
+  var cy = H*0.315;
+  var sep = W*0.212;
+  var ew = W*0.138, eh = 34;
+  var shaking = b.hitFlash > 0 ? (Math.random()-0.5)*5*b.hitFlash : 0;
+
+  /* 识海：暗红魔雾 + 两圈缓转的符文环 + 心跳脉冲。
+     Boss 战画面本来只有两只眼睛，空得像个示意图 —— 这些是把它撑成「在场」的东西。 */
+  var beat = Math.pow(Math.max(0, Math.sin(t/760)), 6);
+  var i, sz;
+  for(i=0;i<3;i++){
+    sz = 300 + i*130;
+    ctx.globalAlpha = 0.10 + 0.05*i + beat*0.11;
+    ctx.drawImage(TEX.fogR, W/2 - sz/2 + Math.sin(t/2100 + i*2)*26, cy - sz/2, sz, sz);
+  }
+  var gs = 430 + beat*100;
+  ctx.globalAlpha = 0.20 + 0.24*beat;
+  ctx.drawImage(TEX.fogR, W/2 - gs/2, cy - gs/2, gs, gs);
+  ctx.globalAlpha = 1;
+
+  /* 心魔即是你自己：下方一个更暗的倒影，抬着头与你同向对瞪。
+     v1 的下半屏只有空山，一双眼睛悬在虚空里 —— 加了这个人才「在场」。 */
+  var ry = H*0.665;
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  ctx.moveTo(W/2 - 12, ry - 92);
+  ctx.quadraticCurveTo(W/2 - 24, ry - 42, W/2 - 32, ry + 18);
+  ctx.lineTo(W/2 + 32, ry + 18);
+  ctx.quadraticCurveTo(W/2 + 24, ry - 42, W/2 + 12, ry - 92);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(5,7,11,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = rgba(PAL.blood, 0.10 + 0.08*beat);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(W/2, ry - 105, 13.5, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(5,7,11,0.92)';
+  ctx.fill();
+  ctx.fillStyle = rgba(PAL.blood, 0.42 + 0.30*beat);
+  ctx.beginPath(); ctx.arc(W/2 - 5.2, ry - 107, 2.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(W/2 + 5.2, ry - 107, 2.3, 0, Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.lineWidth = 1.4;
+  for(i=0;i<2;i++){
+    var rr = 150 + i*54;
+    var a0 = t/3200 + i*1.2;
+    ctx.strokeStyle = rgba(PAL.blood, 0.20 + 0.14*beat);
+    ctx.beginPath(); ctx.arc(W/2, cy, rr, a0, a0 + 4.2); ctx.stroke();
+    ctx.strokeStyle = rgba(PAL.gold, 0.14 + 0.10*beat);
+    ctx.beginPath(); ctx.arc(W/2, cy, rr - 7, -a0*1.4, -a0*1.4 + 2.6); ctx.stroke();
+  }
+
+  drawOneEye(W/2 - sep + shaking, cy, ew, eh, b, -1, t);
+  drawOneEye(W/2 + sep + shaking, cy, ew, eh, b,  1, t);
+
+  /* 眉心朱砂：一双悬空的眼睛不像「东西」，加上这一点就有了脸 */
+  var mxx = W/2, mxy = cy - eh*1.7;
+  ctx.strokeStyle = rgba(PAL.blood, 0.45 + 0.30*beat);
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.moveTo(mxx, mxy - 7); ctx.lineTo(mxx, mxy + 9); ctx.stroke();
+  ctx.beginPath(); ctx.arc(mxx, mxy - 17, 2.8, 0, Math.PI*2);
+  ctx.fillStyle = rgba(PAL.blood, 0.70 + 0.30*beat);
+  ctx.fill();
+}
+
+function drawOneEye(cx, cy, w, h, b, side, t){
+  var openK = clamp(1 - b.lid, 0, 1);
+  /* 二次贝塞尔曲线在 t=0.5 的顶点 = (P0+2P1+P2)/4，只有控制点偏移的一半真正生效。
+     按 h 直接给控制点，画出来的眼高只剩设计值的一半 —— 一只丹凤眼被压成一条缝。 */
+  var topY = cy - h*(0.22 + 1.78*openK);
+  var botY = cy + h*(1.02 + 0.14*openK);
+
+  ctx.beginPath();
+  ctx.moveTo(cx - w, cy);
+  ctx.quadraticCurveTo(cx, topY, cx + w, cy);
+  ctx.quadraticCurveTo(cx, botY, cx - w, cy);
+  ctx.closePath();
+  ctx.fillStyle = '#04050a';
+  ctx.fill();
+
+  if(openK > 0.07){
+    ctx.save();
+    ctx.clip();
+
+    var ir = h * (0.92 + 0.36*openK);
+    var ix = cx + b.irisDX * 9;
+    var iy = cy - h*0.02;
+    ctx.drawImage(TEX.iris, ix - ir, iy - ir, ir*2, ir*2);
+
+    /* 竖瞳 */
+    ctx.beginPath();
+    ctx.ellipse(ix, iy, ir*0.17, ir*0.72*(0.75 + 0.25*openK), 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(4,4,8,0.95)';
+    ctx.fill();
+
+    /* 斩中：眼底金光爆闪 */
+    if(b.hitFlash > 0){
+      ctx.globalAlpha = clamp(b.hitFlash, 0, 1) * 0.9;
+      var gs = ir*3.4;
+      ctx.drawImage(TEX.gMoon, ix - gs/2, iy - gs/2, gs, gs);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  /* 眼线 */
+  ctx.beginPath();
+  ctx.moveTo(cx - w, cy);
+  ctx.quadraticCurveTo(cx, topY, cx + w, cy);
+  ctx.strokeStyle = rgba(PAL.gold, 0.30 + 0.55*openK);
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.quadraticCurveTo(cx, botY, cx + w, cy);
+  ctx.strokeStyle = rgba(PAL.gold, 0.18 + 0.30*openK);
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  /* 前兆：上眼睑的暗压，是唯一可信的信号 */
+  if(b.pre > 0){
+    ctx.beginPath();
+    ctx.moveTo(cx - w, cy);
+    ctx.quadraticCurveTo(cx, topY - (1-b.pre)*10, cx + w, cy);
+    ctx.strokeStyle = rgba(PAL.blood, 0.55 * b.pre);
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  }
+}
+
+/* 神识所向：Boss 战期间屏幕上唯一的位置反馈。
+   M1 全程没有任何「我现在看向哪」的提示，玩家无法自察，这一处是硬缺口。 */
+function drawGazePoint(){
+  if(!Gaze.filt.ok) return;
+  var x = clamp(Gaze.filt.x, 0, W), y = clamp(Gaze.filt.y, 0, H);
+  var s = 34;
+  ctx.globalAlpha = 0.20;
+  ctx.drawImage(TEX.gGold, x - s/2, y - s/2, s, s);
+  ctx.globalAlpha = 0.42;
+  ctx.strokeStyle = rgba(PAL.gold, 0.55);
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI*2); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+/* ============================================================
+   14. HUD
+   ============================================================ */
+function drawHUD(){
+  var g = playGeom();
+  var hy = H - g.hud;
+  var i;
+
+  ctx.fillStyle = 'rgba(5,7,11,0.88)';
+  ctx.fillRect(0, hy, W, g.hud);
+  ctx.strokeStyle = rgba(PAL.gold, 0.16);
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, hy + 0.5); ctx.lineTo(W, hy + 0.5); ctx.stroke();
+
+  /* 道心 */
+  ctx.textAlign = 'left';
+  ctx.font = '11px "Songti SC","STSong",serif';
+  ctx.fillStyle = 'rgba(126,142,163,0.75)';
+  ctx.fillText('道心', 16, hy + 20);
+
+  for(i=0;i<P.hp;i++){
+    var cxp = 58 + i*13;
+    ctx.beginPath();
+    ctx.arc(cxp, hy + 16, 4, 0, Math.PI*2);
+    if(i < GM.hp){
+      ctx.fillStyle = PAL.gold;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = rgba(PAL.blood, 0.45);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  /* 倒计时 */
+  var left = Math.max(0, P.runMs - GM.elapsed);
+  ctx.textAlign = 'right';
+  ctx.font = '13px ui-monospace,Menlo,monospace';
+  ctx.fillStyle = left < 10000 ? PAL.blood : 'rgba(126,142,163,0.8)';
+  ctx.fillText(r0(left/1000) + 's', W - 16, hy + 20);
+
+  var labels = ['左','中','右'];
+
+  /* 心魔战没有杂兵，三区剑意槽在这里是空摆设 —— 换成「还要斩几次」 */
+  if(GM.wave === 2 && GM.boss){
+    for(i=0;i<P.bossNeed;i++){
+      var dx2 = 16 + i*27, dy2 = hy + 44;
+      var got = i < GM.boss.hits;
+      ctx.beginPath();
+      ctx.moveTo(dx2+8, dy2);
+      ctx.lineTo(dx2+16, dy2+11);
+      ctx.lineTo(dx2+8, dy2+26);
+      ctx.lineTo(dx2, dy2+11);
+      ctx.closePath();
+      ctx.fillStyle = got ? PAL.gold : 'rgba(255,255,255,0.06)';
+      ctx.fill();
+      ctx.strokeStyle = got ? rgba(PAL.gold,0.85) : 'rgba(255,255,255,0.16)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.textAlign = 'left';
+    ctx.font = '11px "Songti SC","STSong",serif';
+    ctx.fillStyle = 'rgba(126,142,163,0.7)';
+    ctx.fillText('心魔 · 待斩 ' + Math.max(0, P.bossNeed - GM.boss.hits) +
+      '　反噬 ' + GM.boss.fails, 110, hy + 63);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(96,110,130,0.6)';
+    ctx.fillText(DEG.on ? '触摸' : '眼动', W - 16, hy + 80);
+    return;
+  }
+
+  /* 三区剑意槽 */
+  for(var z=0;z<3;z++){
+    var bw = g.zw - 28;
+    var bx = z*g.zw + 14;
+    var by = hy + 52;
+    var bh = 9;
+    var engr = GM.engr[z] > 0;
+    var val = clamp(GM.chargeV[z]/P.chargeMax, 0, 1);
+
+    ctx.textAlign = 'center';
+    ctx.font = '11px "Songti SC","STSong",serif';
+    ctx.fillStyle = engr ? PAL.gold : 'rgba(126,142,163,0.62)';
+    ctx.fillText(labels[z], bx + bw/2, hy + 43);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.055)';
+    ctx.fillRect(bx, by, bw, bh);
+
+    if(val > 0.005){
+      ctx.fillStyle = engr ? PAL.gold : PAL.jade;
+      ctx.fillRect(bx, by, bw*val, bh);
+    }
+
+    if(engr){
+      /* 刻痕剩余时间：这一条是本次玩法压力的全部来源，必须看得见 */
+      var k = GM.engr[z] / P.engraveMs;
+      ctx.fillStyle = rgba(PAL.blood, 0.75);
+      ctx.fillRect(bx, by, bw*k, 2);
+    }
+
+    ctx.strokeStyle = engr ? rgba(PAL.gold, 0.55) : 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+  }
+
+  /* 底部一行状态 */
+  ctx.textAlign = 'left';
+  ctx.font = '11px system-ui,sans-serif';
+  var line = '';
+  if(GM.wave === 1 && GM.seer){
+    line = GM.seer.zone === ZONE.active
+      ? '别看它 · 移到别的区'
+      : '窥天者 · 在' + labels[GM.seer.zone] + '区';
+    ctx.fillStyle = GM.seer.zone === ZONE.active ? rgba(PAL.blood,0.9) : 'rgba(126,142,163,0.7)';
+  } else if(GM.wave === 2 && GM.boss){
+    line = '斩' + GM.boss.hits + ' / ' + P.bossNeed + '　反噬 ' + GM.boss.fails;
+    ctx.fillStyle = 'rgba(126,142,163,0.7)';
+  } else {
+    line = '斩 ' + GM.kills + '　守 ' + GM.blocked + (GM.sancai ? '　三才 ' + GM.sancai : '');
+    ctx.fillStyle = 'rgba(126,142,163,0.7)';
+  }
+  ctx.fillText(line, 16, hy + 80);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(96,110,130,0.6)';
+  ctx.fillText(DEG.on ? '触摸' : '眼动', W - 16, hy + 80);
+}
+
+function drawWaveBanner(){
+  var w = WAVE[clamp(GM.wave, 0, 2)];
+  ctx.textAlign = 'center';
+  ctx.font = '500 15px "Songti SC","STSong","Noto Serif SC",serif';
+  ctx.fillStyle = rgba(PAL.gold, 0.70);
+  ctx.fillText(w.name, W/2, 44);
+  ctx.font = '10px "Songti SC","STSong",serif';
+  ctx.fillStyle = 'rgba(140,157,179,0.5)';
+  ctx.fillText('垂目 · ' + w.verb, W/2, 60);
+}
+
+function drawIntro(){
+  var w = WAVE[clamp(GM.wave, 0, 2)];
+  var k = GM.intro / Math.max(1, GM.introMs);
+  var a = Math.min(1, k*2.4);
+
+  ctx.fillStyle = 'rgba(4,5,10,' + (0.80*k) + ')';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalAlpha = a;
+  ctx.textAlign = 'center';
+
+  ctx.font = '500 26px "Songti SC","STSong","Noto Serif SC",serif';
+  ctx.fillStyle = PAL.moon;
+  ctx.fillText(w.name, W/2, H*0.38);
+
+  ctx.font = '500 72px "Songti SC","STSong","Noto Serif SC",serif';
+  ctx.fillStyle = PAL.gold;
+  ctx.fillText(w.verb, W/2, H*0.38 + 84);
+
+  ctx.font = '13px system-ui,-apple-system,sans-serif';
+  ctx.fillStyle = 'rgba(200,214,232,0.72)';
+  ctx.fillText(w.tip, W/2, H*0.38 + 126);
+
+  ctx.globalAlpha = 1;
+}
+
+/* ============================================================
+   15. 玩法状态
+   ============================================================ */
+var GM = null;
+
+/* 降级模式：眼动精度不够时的兜底。玩法逻辑不变，只把「视点选三区」
+   换成「手指点三区」，垂目照旧走眨眼。这不是失败路径，是产品形态之一。 */
+var DEG = { on:false, reason:'', jitterT:0 };
+
+function enterDegrade(reason){
+  if(DEG.on) return;
+  DEG.on = true;
+  DEG.reason = reason;
+  $('degBtn').textContent = '用眼动';
+  $('degBtn').classList.add('on');
+  if(S.phase !== 'play') toast('已切到触摸模式：' + reason + '。点屏幕选目标，闭眼照旧出剑。');
+}
+function exitDegrade(){
+  DEG.on = false;
+  DEG.reason = '';
+  $('degBtn').textContent = '切触摸';
+  if(S.phase !== 'play') $('degBtn').classList.remove('on');
+}
+function toggleDegrade(){
+  if(DEG.on) exitDegrade(); else enterDegrade('玩家手动切换');
+}
+
+function newGame(){
+  return {
+    on:false, t0:0, elapsed:0, gameT:0,
+    wave:-1, intro:0, introMs:1,
+    hp:P.hp, kills:0, blocked:0, hits:0, missed:0, score:0,
+    enemies:[], nextSpawn:0, gap:P.spawnGap,
+    chargeV:[0,0,0], engr:[0,0,0], sancai:0,
+    seer:null, boss:null, bossLog:[],
+    blackout:0, flash:0, shake:0, slow:0,
+    blinkLog:[], execLog:[], nonIntent:0, execTotal:0,
+    lastShield:null, lastLockBlip:0, waveLog:[]
+  };
+}
+
+function playGeom(){
+  var hud = 104;
+  return { hud:hud, attackY:H - hud - 46, spawnY:-26, zw:W/3 };
+}
+
+function waveOf(ms){
+  if(ms < P.waveMs) return 0;
+  if(ms < P.waveMs*2) return 1;
+  return 2;
+}
+
+function spawnEnemy(){
+  var g = playGeom();
+  var z = Math.floor(Math.random()*3);
+  var same = GM.enemies.filter(function(e){ return e.zone === z && e.state === 'walk'; }).length;
+  if(same >= 2) z = (z + 1 + (Math.random()<0.5?0:1)) % 3;
+  GM.enemies.push({
+    zone:z, y:g.spawnY, cd:0, lock:false, state:'walk',
+    tel:0, telStart:0, seed:Math.random()*100,
+    pupilX:0, pupilT:Math.random()*120
+  });
+}
+
+function spawnSeer(){
+  GM.seer = {
+    zone: Math.floor(Math.random()*3),
+    y: -120,
+    dwell: 0,
+    nextDrift: P.seerDrift,
+    cd: 0
+  };
+}
+
+function spawnBoss(){
+  GM.boss = {
+    lid:0, pre:0, state:'idle',
+    nextAt: now() + 1500,
+    hits:0, fails:0, hitFlash:0,
+    irisDX:0, irisT:0,
+    winFrom:0, winUntil:0,
+    closeStart:0, closeUntil:0, preStart:0
+  };
+}
+
+/* ============================================================
+   16. 开局 / 波次 / 结束
+   ============================================================ */
+function startPlay(){
+  GM = newGame();
+  GM.on = true;
+  GM.t0 = now();
+  GM.gameT = 0;
+  GM.nextSpawn = 1200;
+  ZONE.active = -1;
+  resetVis();
+  S.phase = 'play';
+  hideAllScreens();
+  $('degBtn').classList.add('on');
+  $('degBtn').textContent = DEG.on ? '用眼动' : '切触摸';
+  DEG.jitterT = 0;
+  startAudio();
+
+  blinkHooks = {
+    onEnd: function(dur){
+      if(!GM || !GM.on) return;
+      GM.blinkLog.push({ t: now()-GM.t0, d: dur });
+      if(dur >= P.shieldMs) GM.lastShield = { s: now()-dur, e: now() };
+      GM.flash = 60;
+      GM.blackout = dur >= P.execMs ? 200 : 130;
+
+      if(GM.wave === 2 && GM.boss){ judgeBossBlink(dur); return; }
+      doExecute(dur);
+    }
+  };
+}
+
+function startWave(w){
+  GM.wave = w;
+  GM.waveLog.push({ w:w, t:Math.round(GM.gameT) });
+  GM.introMs = w === 0 ? 2000 : 2200;
+  GM.intro = GM.introMs;
+  GM.enemies = [];
+  GM.nextSpawn = w === 1 ? 1400 : 1200;
+  GM.chargeV = [0,0,0];
+  GM.engr = [0,0,0];
+  sfx('wave');
+
+  /* 每一波都要清掉上一波的专属实体。
+     v1 只在第一波清，结果窥天者的黑雾、竖瞳、撕裂条一路串到 Boss 战，
+     整场对瞪都蒙在一根紫色柱子里。 */
+  GM.seer = null;
+  if(w === 1){ spawnSeer(); }
+  else if(w === 2){ spawnBoss(); }
+}
+
+function engraveZone(z){
+  var g = playGeom();
+  GM.engr[z] = P.engraveMs;
+  GM.chargeV[z] = P.chargeMax;
+  GM.enemies.forEach(function(e){ if(e.zone === z && e.state === 'walk') e.lock = true; });
+  addRipple(z*g.zw + g.zw/2, H*0.5, 12, 150, PAL.gold, 0.55);
+  sfx('engrave');
+}
+
+/* 垂目 · 斩：一次闭眼把当前所有刻痕区一并斩掉。
+   没有刻痕就闭眼 = 空斩，不罚，只是浪费了一次机会。 */
+function doExecute(dur){
+  var g = playGeom();
+  var zones = [], z, i;
+  for(z=0;z<3;z++) if(GM.engr[z] > 0) zones.push(z);
+  if(!zones.length) return;
+
+  var sancai = zones.length === 3;
+  var killed = 0;
+
+  zones.forEach(function(zz){
+    var cx = zz*g.zw + g.zw/2;
+    GM.enemies.forEach(function(e){
+      if(e.zone !== zz || e.state === 'dead') return;
+      e.state = 'dead';
+      killed++;
+      addFrag(cx, e.y - 34, sancai ? 13 : 9, PAL.shadow, sancai ? 1.4 : 1);
+      addRipple(cx, e.y - 34, 6, 88, PAL.gold, 0.40);
+    });
+    addSlash(cx - g.zw*0.44, g.attackY + 6, cx + g.zw*0.44, g.attackY - 170,
+      sancai ? PAL.gold : PAL.moon, 0.36);
+  });
+
+  GM.kills += killed;
+  GM.score += killed * (sancai ? 15 : 10);
+  GM.execTotal += killed;
+  if(BLINK.naturalP90 > 0 && dur <= BLINK.naturalP90) GM.nonIntent += killed;
+  GM.execLog.push({ t:Math.round(GM.gameT), n:killed, dur:Math.round(dur), sancai:sancai });
+
+  if(sancai){
+    GM.sancai++;
+    addSlash(0, H*0.58, W, H*0.26, PAL.gold, 0.58);
+    addSlash(W, H*0.58, 0, H*0.26, PAL.gold, 0.58);
+    addRipple(W/2, H*0.42, 30, W*0.9, PAL.gold, 0.75);
+    sfx('sancai');
+    GM.flash = 95;
+  } else {
+    sfx('slash');
+  }
+
+  GM.shake = Math.min(1, 0.32 + killed*0.13 + (sancai ? 0.42 : 0));
+  GM.slow = 0.12;
+
+  zones.forEach(function(zz){ GM.engr[zz] = 0; GM.chargeV[zz] = 0; });
+  GM.enemies.forEach(function(e){ e.lock = false; });
+}
+
+/* ---------------- 心魔：谁先垂目 ---------------- */
+function judgeBossBlink(dur){
+  var b = GM.boss;
+  var te = now(), ts = te - dur;
+  if(dur < 150) return;                       // 自然眨眼，不判定（真机中位 42ms）
+
+  if(dur > P.bossOver){ bossFail('闭目过久，被反噬'); return; }
+
+  var inWin = (ts <= b.winUntil) && (te >= b.winFrom);
+  if(inWin) bossHit(dur);
+  else bossFail('时机错了');
+}
+
+function bossHit(dur){
+  var b = GM.boss;
+  b.hits++;
+  b.hitFlash = 1;
+  GM.shake = 0.95;
+  GM.slow = 0.20;
+  GM.flash = 130;
+  sfx('bosshit');
+  var cy = H*0.30;
+  addSlash(W*0.10, cy + 46, W*0.90, cy - 46, PAL.moon, 0.44);
+  addFrag(W/2, cy, 15, PAL.gold, 1.35);
+  addRipple(W/2, cy, 24, 280, PAL.gold, 0.62);
+  GM.bossLog.push({ t:Math.round(GM.gameT), r:'斩中', d:Math.round(dur) });
+
+  if(b.hits >= P.bossNeed){ endPlay('win'); return; }
+  b.state = 'idle';
+  b.lid = 0.55;
+  b.nextAt = now() + 850;
+}
+
+function bossFail(why){
+  var b = GM.boss;
+  b.fails++;
+  GM.hp--;
+  GM.hits++;
+  GM.flash = 150;
+  GM.shake = 0.9;
+  VIS.glitch = 0.40;
+  sfx('backlash');
+  GM.bossLog.push({ t:Math.round(GM.gameT), r:why });
+  if(GM.hp <= 0) endPlay('hp');
+}
+
+function startBossClose(t){
+  var b = GM.boss;
+  b.state = 'close';
+  b.closeStart = t;
+  b.closeUntil = t + 240;
+  b.winFrom = t - P.bossWin;
+  b.winUntil = t + P.bossWin;
+  sfx('bossblink');
+}
+
+function stepBoss(dt){
+  var b = GM.boss;
+  if(!b) return;
+  var t = now();
+
+  if(b.hitFlash > 0) b.hitFlash -= dt*3.2;
+
+  /* 虹膜 10Hz 追视点：每帧算太浪费，插值过渡肉眼看不出差别 */
+  b.irisT -= dt*1000;
+  if(b.irisT <= 0){
+    b.irisT = 110;
+    var gx = Gaze.filt.ok ? Gaze.filt.x : W/2;
+    b.irisDX = clamp((gx - W/2)/(W*0.5), -1, 1);
+  }
+
+  if(b.state === 'idle'){
+    if(t >= b.nextAt){
+      if(Math.random() < 0.32) startBossClose(t);          // 假眨：无前兆
+      else { b.state = 'pre'; b.preStart = t; }
+    }
+  } else if(b.state === 'pre'){
+    var k = (t - b.preStart)/P.bossPre;
+    b.pre = clamp(k, 0, 1);
+    b.lid = 0.34*b.pre;
+    if(k >= 1) startBossClose(t);
+  } else if(b.state === 'close'){
+    b.pre = 0;
+    var ck = (t - b.closeStart)/90;
+    b.lid = ck >= 1 ? 1 : 0.34 + 0.66*ck;
+    if(t >= b.closeUntil){
+      b.state = 'idle';
+      b.lid = 0;
+      b.nextAt = t + 1450 + Math.random()*1900;
+    }
+  }
+}
+
+/* ============================================================
+   17. 逻辑步进
+   ============================================================ */
+function stepPlay(dt){
+  var g = playGeom();
+  var t = now();
+
+  if(GM.slow > 0){ GM.slow -= dt; dt *= 0.35; }
+
+  if(GM.blackout > 0) GM.blackout -= dt*1000;
+  if(GM.flash > 0) GM.flash -= dt*1000;
+
+  /* 波次切换 */
+  var w = waveOf(GM.gameT);
+  if(w !== GM.wave) startWave(w);
+
+  /* 波次开场：暂停推进，但它同时就是「闭眼养神」的休息点 */
+  if(GM.intro > 0){
+    GM.intro -= dt*1000;
+    return;
+  }
+
+  GM.gameT += dt*1000;
+
+  /* 自动降级判定 */
+  if(!DEG.on){
+    if(Gaze.jitter > 280){
+      DEG.jitterT += dt*1000;
+      if(DEG.jitterT > 2000) enterDegrade('视线抖动 ' + r0(Gaze.jitter) + 'px，超过 280px 上限');
+    } else {
+      DEG.jitterT = Math.max(0, DEG.jitterT - dt*600);
+    }
+    if(Gaze.lostMs > 20000) enterDegrade('面部连续丢失超过 20 秒');
+  }
+
+  /* ---- 剑意：区级累积 ---- */
+  var z = ZONE.active;
+  var i;
+  for(i=0;i<3;i++){
+    if(GM.engr[i] > 0) continue;            // 已刻痕的区不再累积
+    if(i === z){
+      GM.chargeV[i] = Math.min(P.chargeMax, GM.chargeV[i] + P.chargeRate*dt);
+      if(GM.chargeV[i] >= P.chargeMax && hasWalkIn(i)) engraveZone(i);
+    } else {
+      GM.chargeV[i] = Math.max(0, GM.chargeV[i] - P.decay*dt);
+    }
+  }
+
+  /* 刻痕倒计时：这一条是整局压力的来源 */
+  for(i=0;i<3;i++){
+    if(GM.engr[i] > 0){
+      GM.engr[i] -= dt*1000;
+      if(GM.engr[i] <= 0){
+        GM.engr[i] = 0;
+        GM.chargeV[i] = 0;
+        GM.enemies.forEach(function(e){ if(e.zone === i) e.lock = false; });
+      }
+    }
+  }
+
+  /* 敌人视觉进度跟随本区剑意 */
+  GM.enemies.forEach(function(e){
+    e.cd = GM.chargeV[e.zone];
+    e.lock = GM.engr[e.zone] > 0;
+    e.pupilT -= dt*1000;
+    if(e.pupilT <= 0){
+      e.pupilT = 100;
+      var cx = e.zone*g.zw + g.zw/2;
+      var gx = Gaze.filt.ok ? Gaze.filt.x : W/2;
+      e.pupilX = clamp((gx - cx)/140, -1, 1);
+    }
+  });
+
+  /* ---- 敌人推进 ---- */
+  GM.enemies.forEach(function(e){
+    if(!GM.on) return;
+    if(e.state === 'dead' || e.state === 'telegraph') return;
+    if(e.lock) return;
+    /* 第一波是教学波，速度放慢到 84%：真机自动机只扫不守时漏斩 10+ 次，
+       真人第一波就死会让整段内容看不到。 */
+    e.y += (GM.wave === 0 ? P.enemySpeed*0.84 : P.enemySpeed) * dt;
+    if(e.y >= g.attackY){
+      e.state = 'telegraph';
+      e.telStart = t;
+      sfx('drum');
+    }
+  });
+
+  GM.enemies.forEach(function(e){
+    if(e.state !== 'telegraph') return;
+    if(t - e.telStart >= P.telegraph){
+      var sh = GM.lastShield;
+      var shielded = sh && sh.e >= e.telStart - 40;
+      if(shielded){ GM.blocked++; sfx('block'); addRipple(e.zone*g.zw+g.zw/2, g.attackY, 10, 110, PAL.jade, 0.4); }
+      else { GM.hp--; GM.hits++; sfx('hit'); GM.shake = 0.55; GM.flash = 70; addFrag(e.zone*g.zw+g.zw/2, g.attackY, 7, PAL.blood, 0.8); }
+      e.state = 'dead';
+      GM.missed++;
+      if(GM.hp <= 0) endPlay('hp');
+    }
+  });
+
+  /* ---- 窥天者 ---- */
+  if(GM.seer){
+    var s = GM.seer;
+    if(s.y < H*0.40) s.y += 26*dt;
+
+    s.nextDrift -= dt*1000;
+    if(s.nextDrift <= 0){
+      s.nextDrift = P.seerDrift;
+      s.zone = s.zone === 0 ? 1 : (s.zone === 2 ? 1 : (Math.random()<0.5 ? 0 : 2));
+      s.dwell = 0;
+      sfx('drift');
+    }
+
+    if(s.cd > 0){
+      s.cd -= dt*1000;
+      s.dwell = 0;
+    } else if(!DEG.on && ZONE.active === s.zone){
+      s.dwell += dt*1000;
+      if(s.dwell >= P.seerDwell){
+        s.dwell = 0;
+        s.cd = 1700;
+        GM.hp--; GM.hits++;
+        GM.flash = 120;
+        GM.shake = 0.85;
+        VIS.glitch = 0.38;
+        sfx('backlash');
+        if(GM.hp <= 0) endPlay('hp');
+      }
+    } else {
+      s.dwell = Math.max(0, s.dwell - dt*460);
+    }
+  }
+
+  /* ---- 心魔 ---- */
+  if(GM.boss) stepBoss(dt);
+
+  /* ---- 生成 ---- */
+  GM.nextSpawn -= dt*1000;
+  if(GM.nextSpawn <= 0 && GM.wave < 2){
+    var alive = GM.enemies.filter(function(e){ return e.state !== 'dead'; }).length;
+    var cap = GM.wave === 1 ? 3 : 6;
+    if(alive >= cap){
+      GM.nextSpawn = 500;
+    } else {
+      spawnEnemy();
+      if(Math.random() < (GM.wave === 1 ? 0.18 : 0.32)) spawnEnemy();
+      GM.gap = Math.max(1500, GM.gap - 28);
+      GM.nextSpawn = (alive < 2 ? 780 : GM.gap) * (GM.wave === 1 ? 1.55 : 1);
+    }
+  }
+
+  GM.enemies = GM.enemies.filter(function(e){ return e.state !== 'dead'; });
+
+  if(GM.gameT >= P.runMs) endPlay('time');
+}
+
+function hasWalkIn(z){
+  for(var i=0;i<GM.enemies.length;i++){
+    if(GM.enemies[i].zone === z && GM.enemies[i].state === 'walk') return true;
+  }
+  return false;
+}
+
+/* ============================================================
+   18. 渲染
+   ============================================================ */
+function renderPlay(dt){
+  var g = playGeom();
+  var t = VIS.t;
+  var z, i;
+
+  /* 自适应降级：连续 2 秒以上掉到 35fps 以下就减一半粒子。
+     视觉是这版的重点，但不能拿掉帧换 —— 眼动本身对延迟极敏感。 */
+  if(dt > 0.028) VIS.lowT += dt;
+  else VIS.lowT = Math.max(0, VIS.lowT - dt*0.6);
+  if(VIS.lowT > 2.2) VIS.low = true;
+  else if(VIS.lowT <= 0) VIS.low = false;
+
+  ctx.save();
+  if(GM.shake > 0){
+    var sh = GM.shake * 7;
+    ctx.translate((Math.random()-0.5)*sh, (Math.random()-0.5)*sh);
+    GM.shake = Math.max(0, GM.shake - dt*2.6);
+  }
+
+  drawBackdrop(dt);
+
+  /* 三区底 */
+  for(z=0;z<3;z++){
+    var x0 = z*g.zw;
+    var act = (ZONE.active === z);
+    var engr = GM.engr[z] > 0;
+    if(engr) ctx.fillStyle = 'rgba(232,182,79,0.070)';
+    else if(act) ctx.fillStyle = 'rgba(79,209,165,0.055)';
+    else ctx.fillStyle = 'rgba(255,255,255,0.009)';
+    ctx.fillRect(x0+1, 0, g.zw-2, H-g.hud);
+
+    ctx.strokeStyle = 'rgba(140,160,185,0.055)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0+0.5, 68); ctx.lineTo(x0+0.5, H-g.hud); ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(194,67,58,0.18)';
+    ctx.setLineDash([5,9]);
+    ctx.beginPath(); ctx.moveTo(x0+8, g.attackY); ctx.lineTo(x0+g.zw-8, g.attackY); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /* 刻痕：一道竖贯该区的剑痕。
+     v1 只把区底变金，「已刻」全靠 HUD 槽辨认，战场上根本没有痕迹 ——
+     名字叫刻痕，画面上就得真有一道痕。 */
+  for(z=0;z<3;z++){
+    if(GM.engr[z] <= 0) continue;
+    var mx = z*g.zw + g.zw/2;
+    var kk = GM.engr[z]/P.engraveMs;
+    var pl2 = 0.55 + 0.45*Math.sin(t/170);
+    var yTop = 76;                       // 标题区下方起笔，否则会穿过波次名
+    var gw = g.zw*0.55;
+    ctx.globalAlpha = 0.13 + 0.17*pl2;
+    ctx.drawImage(TEX.gGold, mx - gw/2, yTop, gw, g.attackY - yTop);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = rgba(PAL.gold, 0.42 + 0.34*pl2);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(mx, yTop); ctx.lineTo(mx, g.attackY); ctx.stroke();
+    ctx.strokeStyle = rgba(PAL.gold, 0.10 + 0.16*kk);
+    ctx.lineWidth = 6;
+    ctx.stroke();
+    /* 剑尖 */
+    ctx.fillStyle = rgba(PAL.gold, 0.55 + 0.35*pl2);
+    ctx.beginPath();
+    ctx.moveTo(mx, yTop); ctx.lineTo(mx - 4, yTop + 11); ctx.lineTo(mx + 4, yTop + 11);
+    ctx.closePath(); ctx.fill();
+  }
+
+  /* 窥天者所在的区：压暗 + 紫裂纹 */
+  if(GM.seer){
+    var sx0 = GM.seer.zone*g.zw;
+    var dg = clamp(GM.seer.dwell/P.seerDwell, 0, 1);
+    ctx.fillStyle = 'rgba(6,3,14,' + (0.34 + 0.22*dg) + ')';
+    ctx.fillRect(sx0, 0, g.zw, H-g.hud);
+
+    ctx.strokeStyle = rgba(PAL.violet, 0.30 + 0.22*Math.sin(t/420));
+    ctx.lineWidth = 1.7;
+    for(var side=0; side<2; side++){
+      var bx = sx0 + (side ? g.zw - 2 : 2);
+      ctx.beginPath();
+      for(var yy=0; yy<H-g.hud; yy+=20){
+        var xx = bx + Math.sin(yy*0.085 + t/880)*(side?-6:6);
+        if(yy === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+      }
+      ctx.stroke();
+    }
+
+    /* 被直视时的撕裂：不做全屏 drawImage 自拷贝（手机太贵），用错位色条模拟 */
+    if(GM.seer.zone === ZONE.active && ((VIS.t/80)|0) % 2 === 0){
+      for(i=0;i<2;i++){
+        var ty = Math.random()*(H-g.hud);
+        var th = 2 + Math.random()*9;
+        var off = (Math.random()-0.5)*20;
+        ctx.globalAlpha = 0.12 + Math.random()*0.16;
+        ctx.fillStyle = Math.random()<0.5 ? PAL.violet : PAL.blood;
+        ctx.fillRect(sx0 + off, ty, g.zw, th);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /* 前摇红晕 */
+  GM.enemies.forEach(function(e){
+    if(e.state === 'telegraph'){
+      var k = 1 - (now()-e.telStart)/P.telegraph;
+      ctx.fillStyle = 'rgba(194,67,58,' + (0.08 + 0.22*Math.max(0,k)) + ')';
+      ctx.fillRect(e.zone*g.zw, 0, g.zw, H-g.hud);
+    }
+  });
+
+  /* 实体 */
+  GM.enemies.forEach(function(e){
+    if(e.state === 'dead') return;
+    drawCultivator(e, e.zone*g.zw + g.zw/2, e.y, t);
+  });
+
+  if(GM.seer) drawSeer(GM.seer, GM.seer.zone*g.zw + g.zw/2, GM.seer.y, t);
+  if(GM.boss) drawBoss(GM.boss, t);
+
+  /* 提示：M1 真机证明玩家不知道什么时候该闭眼，可读性优先于氛围 */
+  if(!BLINK.active && GM.blackout <= 0){
+    var telN = 0, engN = 0;
+    GM.enemies.forEach(function(e){
+      if(e.state === 'telegraph') telN++;
+    });
+    for(i=0;i<3;i++) if(GM.engr[i] > 0) engN++;
+
+    ctx.textAlign = 'center';
+    if(telN > 0){
+      ctx.font = '500 20px "Songti SC","STSong","Noto Serif SC",serif';
+      ctx.fillStyle = 'rgba(194,67,58,' + (0.72 + 0.28*Math.sin(t/110)) + ')';
+      ctx.fillText('垂目 · 守', W/2, H*0.15);
+    } else if(engN > 0){
+      ctx.font = '500 20px "Songti SC","STSong","Noto Serif SC",serif';
+      ctx.fillStyle = 'rgba(232,182,79,' + (0.66 + 0.34*Math.sin(t/130)) + ')';
+      ctx.fillText(engN === 3 ? '三才 · 垂目' : '垂目 · 斩', W/2, H*0.15);
+    }
+  }
+
+  drawFx(dt);
+
+  ctx.restore();
+
+  /* 闭眼 = 内视：全屏接管，HUD 一并隐去 */
+  var closed = BLINK.active || GM.blackout > 0;
+  if(closed){
+    drawInnerView();
+  } else {
+    drawVignette();
+    drawHUD();
+    drawWaveBanner();
+    if(GM.wave === 2 && GM.boss) drawGazePoint();
+    if(DEG.on){
+      ctx.textAlign = 'center';
+      ctx.font = '11px system-ui,sans-serif';
+      ctx.fillStyle = 'rgba(255,185,182,0.85)';
+      ctx.fillText('触摸模式 · 点屏幕选目标', W/2, 24);
+    }
+  }
+
+  if(GM.intro > 0) drawIntro();
+
+  if(!S.calibrated() && !DEG.on){
+    ctx.textAlign = 'center';
+    ctx.font = '13px system-ui,sans-serif';
+    ctx.fillStyle = 'rgba(232,238,247,0.7)';
+    ctx.fillText('未校准 — 请先回首页做校准', W/2, H*0.72);
+  }
+}
+
+/* ============================================================
+   19. 结算
+   ============================================================ */
+function endPlay(reason){
+  if(!GM || !GM.on) return;
+  GM.on = false;
+  blinkHooks = null;
+  stopAudio();
+  S.phase = 'end';
+
+  var secs = Math.round(GM.gameT/1000);
+  var nonIntentRate = GM.execTotal ? GM.nonIntent/GM.execTotal : 0;
+  var title = reason === 'win' ? '心魔已斩'
+    : (reason === 'time' ? '时限到' : (reason === 'hp' ? '道心崩碎' : '已结束'));
+
+  $('endTitle').textContent = title;
+  $('endStats').innerHTML =
+    '<div class="kv"><span>斩获</span><b>' + GM.kills + ' 人</b></div>' +
+    '<div class="kv"><span>三才剑阵</span><b>' + GM.sancai + ' 次</b></div>' +
+    '<div class="kv"><span>守下</span><b>' + GM.blocked + '</b></div>' +
+    '<div class="kv"><span>漏斩（碰到底线）</span><b>' + GM.missed + '</b></div>' +
+    '<div class="kv"><span>道心</span><b>' + Math.max(0,GM.hp) + ' / ' + P.hp + '</b></div>' +
+    '<div class="kv"><span>心魔</span><b>' + (GM.boss ? ('斩 ' + GM.boss.hits + ' · 反噬 ' + GM.boss.fails) : '未遭遇') + '</b></div>' +
+    '<div class="kv"><span>推进到</span><b>' + (WAVE[clamp(GM.wave,0,2)].name) + '</b></div>' +
+    '<div class="kv"><span>用时</span><b>' + secs + ' 秒</b></div>' +
+    '<div class="kv"><span>输入模式</span><b>' + (DEG.on ? '触摸降级' : '眼动') + '</b></div>' +
+    '<div class="kv"><span>垂目次数</span><b>' + GM.blinkLog.length + '</b></div>' +
+    '<div class="kv"><span>可能非意图出剑</span><b>' + Math.round(nonIntentRate*100) + '%</b></div>';
+
+  $('endText').value = playReport(secs, nonIntentRate, reason);
+  buildFatigue();
+  showScreen('scrEnd');
+}
+
+function playReport(secs, nonIntentRate, reason){
+  var L = [];
+  L.push('《一个眼神杀死你》M2 修仙版 · 一局');
+  L.push('时间 ' + new Date().toLocaleString('zh-CN'));
+  L.push('设备 ' + navigator.userAgent);
+  L.push('结局 ' + (reason === 'win' ? '心魔已斩' : (reason === 'time' ? '时限到' : (reason === 'hp' ? '道心崩碎' : reason))));
+  L.push('斩获 ' + GM.kills + '　三才 ' + GM.sancai + '　守 ' + GM.blocked + '　漏斩 ' + GM.missed);
+  L.push('道心 ' + Math.max(0,GM.hp) + '/' + P.hp + '　用时 ' + secs + ' 秒　垂目 ' + GM.blinkLog.length + ' 次');
+  L.push('');
+  L.push('【波次】');
+  GM.waveLog.forEach(function(w){
+    L.push('  ' + WAVE[w.w].name.replace(/\s/g,'') + ' 于 ' + w.t + ' ms 开始');
+  });
+  L.push('');
+  L.push('【出剑】');
+  L.push('  出剑总数 ' + GM.execTotal + '　可能非意图 ' + GM.nonIntent +
+    '（' + Math.round(nonIntentRate*100) + '%）');
+  var sancaiLog = GM.execLog.filter(function(e){ return e.sancai; });
+  L.push('  三才剑阵 ' + sancaiLog.length + ' 次');
+  var kills = GM.execLog.map(function(e){ return e.n; });
+  if(kills.length){
+    L.push('  单次出剑斩杀 中位 ' + r0(median(kills)) + '　最多 ' + Math.max.apply(null,kills));
+  }
+  if(GM.boss){
+    L.push('');
+    L.push('【心魔】斩中 ' + GM.boss.hits + ' / ' + P.bossNeed + '　反噬 ' + GM.boss.fails);
+    GM.bossLog.forEach(function(b){
+      L.push('  ' + b.t + 'ms ' + b.r + (b.d ? ('（闭目 ' + b.d + 'ms）') : ''));
+    });
+  }
+  var ds = GM.blinkLog.map(function(b){ return b.d; });
+  if(ds.length){
+    L.push('');
+    L.push('闭目时长 中位 ' + r0(median(ds)) + 'ms　P90 ' + r0(pct(ds,0.9)) + 'ms　最长 ' + r0(Math.max.apply(null,ds)) + 'ms');
+  }
+  L.push('');
+  L.push('本机眨眼阈值 ' + BLINK.thr.toFixed(4) + '　自然眨眼 P90 ' + r0(BLINK.naturalP90) + 'ms');
+  if(!BLINK.naturalP90){
+    L.push('【注意】本局前没跑过眨眼基线，「可能非意图」恒为 0，不具参考价值。');
+  }
+  L.push('—— 以上数据全部在本机计算，未上传 ——');
+  return L.join('\n');
+}
+
+function buildFatigue(){
+  var row = $('fatigueRow');
+  row.innerHTML = '';
+  for(var i=1;i<=5;i++){
+    (function(v){
+      var b = document.createElement('button');
+      b.className = 'btn ghost';
+      b.style.padding = '14px 0';
+      b.textContent = v;
+      b.addEventListener('click', function(){
+        $('endText').value += '\n主观疲劳分 ' + v + ' / 5（1=轻松 5=撑不住）';
+        Array.prototype.forEach.call(row.children, function(c){ c.style.borderColor = '#2a3648'; });
+        b.style.borderColor = PAL.gold;
+      });
+      row.appendChild(b);
+    })(i);
+  }
+}
+
+/* ============================================================
+   20. 音频（WebAudio 合成，无外部文件）
+   ============================================================ */
+var AC = null, master = null, hum = null, humGain = null;
+
+function startAudio(){
+  if(AC){
+    if(AC.state === 'suspended'){ try { AC.resume(); } catch(e){} }
+    return;
+  }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain();
+    master.gain.value = 0.6;
+    master.connect(AC.destination);
+    hum = AC.createOscillator();
+    hum.type = 'sawtooth';
+    hum.frequency.value = 120;
+    humGain = AC.createGain();
+    humGain.gain.value = 0;
+    hum.connect(humGain);
+    humGain.connect(master);
+    hum.start();
+  } catch(e){ AC = null; }
+}
+
+function stopAudio(){
+  try {
+    if(humGain) humGain.gain.value = 0;
+    if(AC && AC.state === 'running') AC.suspend();
+  } catch(e){}
+}
+
+function sfx(kind){
+  if(!AC || AC.state !== 'running') return;
+  var t = AC.currentTime, o, g2;
+
+  function tone(f, dur, type, vol, delay){
+    var t0 = t + (delay || 0);
+    o = AC.createOscillator(); g2 = AC.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f, t0);
+    g2.gain.setValueAtTime(0.0001, t0);
+    g2.gain.exponentialRampToValueAtTime(vol || 0.2, t0 + 0.012);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g2); g2.connect(master);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  function sweep(f1, f2, dur, type, vol, delay){
+    var t0 = t + (delay || 0);
+    o = AC.createOscillator(); g2 = AC.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(Math.max(20,f1), t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20,f2), t0 + dur);
+    g2.gain.setValueAtTime(0.0001, t0);
+    g2.gain.exponentialRampToValueAtTime(vol || 0.2, t0 + 0.01);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g2); g2.connect(master);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+
+  if(kind === 'engrave'){ tone(1320, 0.09, 'square', 0.10); tone(1760, 0.13, 'sine', 0.07, 0.05); }
+  if(kind === 'slash')  { sweep(1800, 240, 0.22, 'sawtooth', 0.16); tone(90, 0.28, 'sine', 0.20); }
+  if(kind === 'sancai') { sweep(2400, 300, 0.44, 'sawtooth', 0.18); tone(196, 0.52, 'sine', 0.15); tone(294, 0.52, 'sine', 0.11, 0.06); tone(392, 0.52, 'sine', 0.09, 0.12); }
+  if(kind === 'drum')   { tone(64, 0.16, 'sine', 0.26); }
+  if(kind === 'block')  { tone(560, 0.10, 'triangle', 0.15); }
+  if(kind === 'hit')    { tone(110, 0.24, 'square', 0.22); }
+  if(kind === 'drift')  { sweep(420, 640, 0.30, 'sine', 0.085); }
+  if(kind === 'backlash'){ sweep(300, 60, 0.44, 'sawtooth', 0.22); tone(48, 0.5, 'sine', 0.17); }
+  if(kind === 'bossblink'){ tone(1400, 0.05, 'sine', 0.055); }
+  if(kind === 'bosshit'){ sweep(2000, 260, 0.30, 'sawtooth', 0.20); tone(72, 0.42, 'sine', 0.22); }
+  if(kind === 'wave')   { tone(330, 0.9, 'sine', 0.095); tone(495, 0.9, 'sine', 0.055, 0.10); }
+}
+
+function updateHum(){
+  if(!humGain || !GM || !GM.on){ if(humGain) humGain.gain.value = 0; return; }
+  var best = 0, i;
+  for(i=0;i<3;i++) best = Math.max(best, GM.chargeV[i]/P.chargeMax);
+  var open = (BLINK.active || GM.blackout > 0 || GM.intro > 0) ? 0 : 1;
+  humGain.gain.value = 0.030 * best * open;
+  hum.frequency.value = 108 + 285*best;
+}
+
+/* ============================================================
+   12. 主循环
+   ============================================================ */
+var lastT = now();
+var acc = 0;
+var STEP = 1/120;
+
+function loop(){
+  requestAnimationFrame(loop);
+  var t = now();
+  var dt = Math.min(0.1, (t - lastT)/1000);
+  lastT = t;
+
+  if(S.phase === 'play' && GM && GM.on){
+    acc += dt;
+    var guard = 0;
+    while(acc >= STEP && guard < 8){ stepPlay(STEP); acc -= STEP; guard++; }
+    GM.elapsed = t - GM.t0;
+    updateHum();
+    renderPlay(dt);
+  } else {
+    /* 仪器模式的十字与三区都已改由 DOM 层绘制（canvas 会被 .scr 遮罩完全盖住），
+       这里只负责铺底色。 */
+    ctx.fillStyle = PAL.ink;
+    ctx.fillRect(-60,-60,W+120,H+120);
+  }
+}
+requestAnimationFrame(loop);
+
+/* ============================================================
+   13. 仪器模式主流程
+   ============================================================ */
+function runInstrument(){
+  S.phase = 'instr';
+  INSTR = newInstr();
+  showScreen('scrInstr');
+  $('insTitle').textContent = '仪器模式';
+  $('insLive').innerHTML = '';
+
+  $('insTip').textContent = '第一步：校准（5 点校准 + 5 点错开复测）';
+  $('insFill').style.width = '0%';
+
+  runCalibration().then(function(r){
+    /* 校准内部把 S.phase 置成了 'calib' 且不会自己改回来。
+       不在这里设回 'instr'，onFace 里的三区判定就永远不执行（它只在 play/instr 下跑），
+       ZONE.active 恒为 -1 —— 第三步"当前判定"永远是 --，一个都命中不了。 */
+    S.phase = 'instr';
+    INSTR.calGains = r.gains;
+    INSTR.calErrs = r.errs;
+    INSTR.calErrXY = r.dxy || [];
+    if(!r.errs.length) throw new Error('复测没有采到有效点，请重新校准。');
+    showScreen('scrInstr');
+    $('insTip').textContent = '第一步完成：复测 ' + r.errs.length + ' 点，误差均值 ' + r0(instrVerdict().mean) + 'px';
+    $('insFill').style.width = '10%';
+    return wait(700);
+  }).then(function(){
+    return measureJitter();
+  }).then(function(){
+    return measureZones();
+  }).then(function(){
+    return measureBlinkBaseline();
+  }).then(function(){
+    showReport();
+  }).catch(function(e){
+    if(S.phase === 'instr' || S.phase === 'calib'){ fail(e); }
+  });
+}
+
+/* ============================================================
+   14. 事件绑定
+   ============================================================ */
+function ensureReady(){
+  return startCamera()
+    .then(function(){ return bootFaceMesh(); })
+    .then(function(){ pumpDetect(); });
+}
+
+$('btnInstr').addEventListener('click', function(){
+  var b = this; b.disabled = true; b.textContent = '启动摄像头…';
+  ensureReady().then(function(){
+    /* 进入仪器模式后所有遮罩都要关掉，只留仪器面板 */
+    hideAllScreens();
+    b.disabled = false; b.textContent = '先测眼力 · 仪器模式';
+    runInstrument();
+  }).catch(function(e){
+    b.disabled = false; b.textContent = '先测眼力 · 仪器模式';
+    fail(e);
+  });
+});
+
+$('btnPlay').addEventListener('click', function(){
+  var b = this; b.disabled = true; b.textContent = '启动摄像头…';
+  ensureReady().then(function(){
+    b.disabled = false; b.textContent = '玩法灰盒 · 直接试玩';
+    if(!S.calibrated()){
+      /* 没校准就先校准，校准完直接进游戏 */
+      return runCalibration().then(function(r){
+        hideAllScreens();
+        var mm = (r.errs && r.errs.length) ? median(r.errs) : 9999;
+        startPlay();
+        /* 校准误差中位已经越过玩法可行域时，硬让玩家用眼动，只会被当成"游戏坏了"。
+           直接给触摸模式，比让他自己去找右上角那个小按钮诚实。 */
+        if(mm > 280) enterDegrade('校准误差中位 ' + r0(mm) + 'px，超出玩法容差');
+      });
+    }
+    hideAllScreens();
+    startPlay();
+  }).catch(function(e){
+    b.disabled = false; b.textContent = '入 定 · 开始一局';
+    fail(e);
+  });
+});
+
+$('btnCalCancel').addEventListener('click', function(){
+  S.phase = 'home'; showScreen('scrHome');
+});
+$('btnInsCancel').addEventListener('click', function(){
+  recOpen = false; onFaceHooks = null;
+  S.phase = 'home'; showScreen('scrHome');
+});
+$('btnRepHome').addEventListener('click', function(){
+  S.phase = 'home'; showScreen('scrHome');
+});
+$('btnEndHome').addEventListener('click', function(){
+  S.phase = 'home'; showScreen('scrHome');
+  $('degBtn').classList.remove('on');
+});
+
+$('degBtn').addEventListener('click', function(ev){
+  ev.stopPropagation();
+  toggleDegrade();
+});
+
+/* 触摸降级：点屏幕三块纵向区域选目标，闭眼处决仍走眨眼 */
+cvs.addEventListener('pointerdown', function(ev){
+  if(S.phase !== 'play' || !DEG.on || !GM || !GM.on) return;
+  var x = ev.clientX;
+  ZONE.active = x < W/3 ? 0 : (x < 2*W/3 ? 1 : 2);
+});
+
+$('btnCopy').addEventListener('click', function(){
+  var ta = $('repText');
+  ta.focus(); ta.select();
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(function(){ $('btnCopy').textContent = '已复制'; }, function(){ $('btnCopy').textContent = '已全选，长按复制'; });
+    } else { $('btnCopy').textContent = '已全选，长按复制'; }
+  } catch(e){ $('btnCopy').textContent = '已全选，长按复制'; }
+});
+$('btnCopyEnd').addEventListener('click', function(){
+  var ta = $('endText');
+  ta.focus(); ta.select();
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(function(){}, function(){});
+    }
+  } catch(e){}
+  $('btnCopyEnd').textContent = '已全选，长按复制';
+});
+
+/* 首次进入：先只启动摄像头，让用户看到设备状态，不自动跑任何测量 */
+$('stThr').textContent = BLINK.thr.toFixed(3) + '（默认）';
+
+})();
+</script>
+</body>
+</html>
