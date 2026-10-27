@@ -27,6 +27,9 @@ p{margin:0 0 10px;font-size:14px;line-height:1.65;color:#8c9db3}
 .btn.red{background:#e8544f;color:#1a0505}
 .btn:disabled{opacity:.4}
 .card{background:#0e141d;border:1px solid #1d2735;border-radius:14px;padding:14px;margin:10px 0}
+.step{display:flex;gap:8px;font-size:12.5px;line-height:1.5;color:#c3cfdd;margin:6px 0}
+.step b{flex:0 0 16px;height:16px;border-radius:4px;background:#1b2836;color:#2fd6a6;
+  font-size:11px;font-weight:600;text-align:center;line-height:16px;margin-top:1px}
 .kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:5px 0;border-bottom:1px solid #161f2b}
 .kv:last-child{border-bottom:0}
 .kv b{color:#dfe9f5;font-weight:500;font-variant-numeric:tabular-nums}
@@ -94,6 +97,15 @@ textarea{width:100%;height:260px;background:#0a1017;color:#b9cbe0;border:1px sol
   </div>
   <button class="btn" id="btnInstr">仪器模式 · 先测数据</button>
   <button class="btn ghost" id="btnPlay">玩法灰盒 · 直接试玩</button>
+  <div class="card" id="howTo">
+    <div style="font-size:12px;color:#7b8b9f;margin-bottom:6px">怎么玩 · 一局 30 秒</div>
+    <div class="step"><b>1</b><span>看向左 / 中 / 右某一区，该区的敌人开始蓄力，蓄满就被锁定</span></div>
+    <div class="step"><b>2</b><span>闭眼 0.2 秒 = 处决所有已锁定的人。没锁定的杀不死</span></div>
+    <div class="step"><b>3</b><span>屏幕喊「现在闭眼 = 挡下」时闭眼，就挡下这一击；不挡就掉血</span></div>
+    <div style="font-size:11.5px;color:#8a7a5c;margin-top:8px;line-height:1.55">
+      闭眼是唯一的动作，既是剑也是盾 —— 同一秒里只能选一个。
+    </div>
+  </div>
   <p class="dim" style="margin-top:18px;font-size:12px">
     视频帧只在本机处理，不上传任何数据。测量的数字也只留在这台手机上，需要你自己复制出来。
   </p>
@@ -205,6 +217,7 @@ function pct(arr, p){
 function r1(v){ return Math.round(v*10)/10; }
 /* NaN 不能直接当数字印出来：视线没采到帧时抖动无定义，必须显示「无数据」而不是 NaN */
 function fmtPx(v, unit){ return isFinite(v) ? r1(v) + (unit||'px') : '无数据'; }
+function fmtPct(v){ return isFinite(v) ? r1(v*100) + '%' : '无数据'; }
 function r0(v){ return Math.round(v); }
 function $(id){ return document.getElementById(id); }
 
@@ -281,6 +294,24 @@ var Gaze = {
   filt:{x:0,y:0,ok:false},
   jitter:0,
   lostMs:0
+};
+
+/* 3 帧中值剔除：MediaPipe 偶发关键点跳飞，会在单帧产生 300–400px 的假位移。
+   低通滤波对脉冲噪声无效——尖峰只会被拖成一段斜坡，反而更难看；
+   中值对孤立尖峰必定剔除，对真实阶跃（眼跳）只延迟 1 帧（约 33ms）。 */
+var MEDI = {
+  bx:[], by:[],
+  push:function(x,y){
+    this.bx.push(x); this.by.push(y);
+    if(this.bx.length > 3){ this.bx.shift(); this.by.shift(); }
+  },
+  mid:function(a){
+    var s = a.slice().sort(function(p,q){ return p-q; });
+    return s.length === 0 ? 0 : s[Math.floor(s.length/2)];
+  },
+  x:function(){ return this.mid(this.bx); },
+  y:function(){ return this.mid(this.by); },
+  reset:function(){ this.bx = []; this.by = []; }
 };
 
 var Model = { a:null, b:null, mean:{x:0,y:0}, flipX:false };  // flipX：前摄画面左右反转，x 轴需镜像
@@ -545,12 +576,17 @@ function onFace(res){
   var p = predict(f.ax, f.ay);
   if(!p) return;
 
-  var sx = p.sx * W, sy = p.sy * H;
-  if(!isFinite(sx) || !isFinite(sy)) return;
-  sx = clamp(sx, -W*0.3, W*1.3);
-  sy = clamp(sy, -H*0.3, H*1.3);
+  var rawX = p.sx * W, rawY = p.sy * H;
+  if(!isFinite(rawX) || !isFinite(rawY)) return;
+  rawX = clamp(rawX, -W*0.3, W*1.3);
+  rawY = clamp(rawY, -H*0.3, H*1.3);
 
-  Gaze.raw.x = sx; Gaze.raw.y = sy; Gaze.raw.ok = true;
+  /* 处理链顺序：clamp → 3 帧中值（去孤立尖峰）→ one-euro（去连续抖动）
+     不能反：先低通会把尖峰抹成一段斜坡，中值就再也认不出它了。 */
+  MEDI.push(rawX, rawY);
+  var sx = MEDI.x(), sy = MEDI.y();
+
+  Gaze.raw.x = rawX; Gaze.raw.y = rawY; Gaze.raw.ok = true;
 
   var dt = Math.min(0.2, Math.max(0.008, (now() - (onFace._t || now()))/1000));
   onFace._t = now();
@@ -568,7 +604,8 @@ function onFace(res){
      触摸降级时视线不再驱动选区，否则会与手指抢控制权。 */
   if((S.phase === 'play' || S.phase === 'instr') && !DEG.on) classifyZone(fx2);
 
-  if(onFaceHooks && onFaceHooks.onSample) onFaceHooks.onSample(f, sx, sy);
+  /* 同时交出原始值与滤波值：仪器要测硬件噪声，玩法要测体验噪声，两者不能混 */
+  if(onFaceHooks && onFaceHooks.onSample) onFaceHooks.onSample(f, fx2, fy2, rawX, rawY);
 }
 
 S.calibrated = function(){ return !!Model.a; };
@@ -673,7 +710,7 @@ function runCalibration(){
   S.phase = 'calib';
   showScreen('scrCalib');
   Model.a = null; Model.b = null; Model.flipX = false;
-  FX.reset(); FY.reset();
+  FX.reset(); FY.reset(); MEDI.reset();
   ZONE.active = -1;
   $('calTip').textContent = '请正对镜头，戴上眼镜也可以但要避免反光';
   $('calSub').textContent = '';
@@ -742,6 +779,11 @@ function runCalibration(){
       var a1 = sa[1], b2 = sb[2];
       var axs = good.map(function(v){ return v.ax; });
       var span = Math.max.apply(null, axs) - Math.min.apply(null, axs);
+      /* 垂直跨度必须单独报。真机上垂直方向的虹膜位移比水平小一个量级，
+         b2 甚至可能为负——那是信号弱到被噪声定符号，不是「垂直反了」。
+         玩法完全不用垂直轴，但报告不能说谎，否则下次没人知道该查哪。 */
+      var ays2 = good.map(function(v){ return v.ay; });
+      var spanY = Math.max.apply(null, ays2) - Math.min.apply(null, ays2);
       if(!isFinite(a1) || !isFinite(b2) || Math.abs(a1) < 1.5){
         throw new Error('校准失败：水平眼动信号过弱（a1=' + r1(a1) + '，跨度 ' + span.toFixed(4) +
           '）。请正对镜头、整张脸放进取景框中央，眼睛跟绿点时真的转动眼球（不要只转头）。');
@@ -752,7 +794,7 @@ function runCalibration(){
       }
       Model.a = sa; Model.b = sb;
       $('calFill').style.width = '70%';
-      return { a1:a1, b2:b2, span:span, signFlip:signFlip };
+      return { a1:a1, b2:b2, span:span, spanY:spanY, signFlip:signFlip };
     }).then(function(gains){
       /* 复测：验证点与校准点错开，误差才不会算成 0 */
       var verFeats = [];
@@ -771,14 +813,16 @@ function runCalibration(){
       return c2.then(function(){
         hideTarget();
         var errs = [];
+        var dxy = [];
         verFeats.forEach(function(v){
           var p = predict(v.ax, v.ay);
           if(!p) return;
           var ex = (p.sx - v.tx) * W;
           var ey = (p.sy - v.ty) * H;
           errs.push(Math.sqrt(ex*ex + ey*ey));
+          dxy.push({ x:ex, y:ey });
         });
-        return { gains:gains, errs:errs, verDiag:verDiag };
+        return { gains:gains, errs:errs, verDiag:verDiag, dxy:dxy };
       });
     });
   });
@@ -793,7 +837,10 @@ function newInstr(){
   return {
     calGains:null,
     calErrs:[],          // 5 点复测误差 px
+    calErrXY:[],         // 同上，但保留带符号的 dx/dy，用来拆分系统偏移与随机抖动
     jitterStd:0, jitterP2P:0, jitterMaxJump:0, jitterFrames:0,
+    jitterStdX:0, jitterStdY:0, jitterRStdX:0, jitterRStdY:0,
+    jitterOutlier:0, jitterJumpMed:0,
     zoneTrials:[],       // {target, got, ms}
     blinkHist:null, blinkCount:0, blinkMed:0, blinkP90:0,
     openP50:0, openThr:0,
@@ -804,11 +851,15 @@ function newInstr(){
 /* 第二步：静视抖动 10 秒 */
 function measureJitter(){
   return new Promise(function(resolve){
-    var xs=[], ys=[], jumps=[], last=null, t0=now();
-    onFaceHooks = { onSample:function(f, sx, sy){
+    var xs=[], ys=[], rxs=[], rys=[], jumps=[], last=null, t0=now();
+    onFaceHooks = { onSample:function(f, sx, sy, rawX, rawY){
       xs.push(sx); ys.push(sy);
-      if(last){ jumps.push(Math.abs(sx-last.sx)); }
-      last = { sx:sx, sy:sy };
+      rxs.push(rawX); rys.push(rawY);
+      if(last){
+        var jx = rawX-last.x, jy = rawY-last.y;
+        jumps.push(Math.sqrt(jx*jx+jy*jy));
+      }
+      last = { x:rawX, y:rawY };
     }};
     $('insTip').textContent = '第二步：盯着屏幕正中央的十字，不要动，保持 10 秒';
     $('insFix').classList.add('on');
@@ -825,16 +876,40 @@ function measureJitter(){
         INSTR.jitterFrames = xs.length;
         if(xs.length < 10){
           INSTR.jitterStd = NaN; INSTR.jitterP2P = NaN; INSTR.jitterMaxJump = NaN;
+          INSTR.jitterStdX = NaN; INSTR.jitterStdY = NaN;
+          INSTR.jitterRStdX = NaN; INSTR.jitterRStdY = NaN; INSTR.jitterOutlier = NaN;
           return resolve();
         }
-        var mx = xs.reduce(function(s,v){ return s+v; },0)/xs.length;
-        var my = ys.reduce(function(s,v){ return s+v; },0)/ys.length;
+        /* 统计必须分轴。上一版把 x 和 y 混成一个标准差，报告出 273px，
+           而三区判定（只用 x）却是 100% 命中——两个数字打架，正是因为
+           垂直轴在真机上失控（b2 为负、信号天生弱得多），把 x 的优异成绩拉平了。
+           分轴之后才能说清：水平多少、垂直多少、玩家真正体验到的是多少。 */
+        function sd(arr){
+          var m = arr.reduce(function(s,v){ return s+v; },0)/arr.length, v=0;
+          arr.forEach(function(o){ v += (o-m)*(o-m); });
+          return Math.sqrt(v/arr.length);
+        }
+        INSTR.jitterStdX  = sd(rxs);   /* 原始（滤波前）= 硬件噪声 */
+        INSTR.jitterStdY  = sd(rys);
+        INSTR.jitterRStdX = sd(xs);    /* 滤波后 = 玩家实际体验 */
+        INSTR.jitterRStdY = sd(ys);
+        var mx = rxs.reduce(function(s,v){ return s+v; },0)/rxs.length;
+        var my = rys.reduce(function(s,v){ return s+v; },0)/rys.length;
         var vx=0, vy=0;
-        xs.forEach(function(v){ vx += (v-mx)*(v-mx); });
-        ys.forEach(function(v){ vy += (v-my)*(v-my); });
-        INSTR.jitterStd = Math.sqrt((vx+vy)/(xs.length*2));
-        INSTR.jitterP2P = Math.max.apply(null, xs.concat(ys)) - Math.min.apply(null, xs.concat(ys));
+        rxs.forEach(function(v){ vx += (v-mx)*(v-mx); });
+        rys.forEach(function(v){ vy += (v-my)*(v-my); });
+        INSTR.jitterStd = Math.sqrt((vx+vy)/(rxs.length*2));
+        INSTR.jitterP2P = Math.max.apply(null, rxs.concat(rys)) - Math.min.apply(null, rxs.concat(rys));
         INSTR.jitterMaxJump = jumps.length ? Math.max.apply(null, jumps) : 0;
+        /* 离群点：单帧位移远超「典型帧间位移」的那些帧。
+           峰峰值 1096px 已经超过屏幕高度，说明抖动不是连续噪声，而是
+           少数几帧关键点跳飞。这类帧用低通滤不掉，只会被拖成一段斜坡。 */
+        var jm = jumps.length ? median(jumps) : 0;
+        var jthr = Math.max(60, jm*5);
+        INSTR.jitterOutlier = jumps.length
+          ? jumps.filter(function(v){ return v > jthr; }).length / jumps.length
+          : NaN;
+        INSTR.jitterJumpMed = jm;
         return resolve();
       }
       setTimeout(tick, 100);
@@ -961,7 +1036,7 @@ function measureBlinkBaseline(){
 /* 汇总：给判断 */
 function instrVerdict(){
   var e = INSTR.calErrs;
-  if(!e.length) return { mean:0, med:0, p95:0, max:0, tier:'无数据', needDegrade:true };
+  if(!e.length) return { mean:0, med:0, p95:0, max:0, tier:'无数据', needDegrade:true, bias:0, noise:0 };
   var mean = e.reduce(function(s,v){ return s+v; },0)/e.length;
   var med  = median(e);
   var p95  = pct(e, 0.95);
@@ -970,7 +1045,25 @@ function instrVerdict(){
   if(mean <= 200){ tier = '≤200px · 可继续推进'; need = false; }
   else if(mean <= 280){ tier = '200–280px · 擦边上限，建议保留降级'; need = true; }
   else { tier = '>280px · 超出方案可行域'; need = true; }
-  return { mean:mean, med:med, p95:p95, max:max, tier:tier, needDegrade:need };
+
+  /* 误差必须拆成两块，否则一定会得出错误结论：
+     bias（系统偏移）= 5 个复测点偏移向量的平均。它把整张画面整体平移，
+       而三区判定只看「相对顺序」，平移不改变顺序 —— 玩法可以完全吸收。
+     noise（随机抖动）= 各点相对该平均偏移的偏离。这个才是真正吞掉容差的部分。
+     实测出现过「总误差 238px，三区却 100% 命中」，正是 bias 大、noise 小的情形。
+     注意：只有 5 个复测点，bias 估计本身有偏（会吸收一部分真实误差），只看量级。 */
+  var d = INSTR.calErrXY || [];
+  var bias = 0, noise = 0;
+  if(d.length >= 2){
+    var bx = 0, by = 0;
+    d.forEach(function(o){ bx += o.x; by += o.y; });
+    bx /= d.length; by /= d.length;
+    bias = Math.sqrt(bx*bx + by*by);
+    var vv = 0;
+    d.forEach(function(o){ var px = o.x-bx, py = o.y-by; vv += px*px + py*py; });
+    noise = Math.sqrt(vv/d.length);
+  }
+  return { mean:mean, med:med, p95:p95, max:max, tier:tier, needDegrade:need, bias:bias, noise:noise };
 }
 
 function zoneStats(){
@@ -999,17 +1092,28 @@ function buildReport(){
   L.push('【1 校准误差】复测 ' + INSTR.calErrs.length + ' 点（与校准点错开）');
   L.push('  逐点 px: ' + INSTR.calErrs.map(function(x){ return r0(x); }).join(' / '));
   L.push('  均值 ' + r0(v.mean) + 'px   中位 ' + r0(v.med) + 'px   P95 ' + r0(v.p95) + 'px   最大 ' + r0(v.max) + 'px');
+  L.push('  拆分 系统偏移 ' + r1(v.bias) + 'px（可被相对判定吸收）　随机抖动 ' + r1(v.noise) + 'px（真正吃容差）');
   if(INSTR.calGains){
     var g = INSTR.calGains;
     L.push('  增益 a1=' + r1(g.a1) + '（真人常见 8–20）  b2=' + r1(g.b2));
     L.push('  水平跨度 Δax=' + g.span.toFixed(4) + '（占眼宽比例，<0.006 视为无信号）' +
       '　x 轴镜像=' + (g.signFlip ? '已翻转（前摄正常现象）' : '未翻转'));
+    if(g.spanY !== undefined){
+      L.push('  垂直跨度 Δay=' + g.spanY.toFixed(4) + (g.b2 < 0
+        ? '　【垂直轴反向或过弱】b2 为负，说明垂直信号弱到被噪声定了符号。本作玩法只用水平轴，不影响三区；但不可据此做任何上下判定。'
+        : ''));
+    }
   }
   L.push('  判定 ' + v.tier);
   L.push('');
-  L.push('【2 静视抖动】10 秒');
-  L.push('  标准差 ' + fmtPx(INSTR.jitterStd) + '   峰峰值 ' + fmtPx(INSTR.jitterP2P) + '   单帧最大跳变 ' + fmtPx(INSTR.jitterMaxJump));
+  L.push('【2 静视抖动】10 秒，' + INSTR.jitterFrames + ' 帧');
+  L.push('  水平（决定三区能不能用）　原始 ' + fmtPx(INSTR.jitterStdX) + '　中值+低通后 ' + fmtPx(INSTR.jitterRStdX));
+  L.push('  垂直（本作玩法不使用）　　原始 ' + fmtPx(INSTR.jitterStdY) + '　中值+低通后 ' + fmtPx(INSTR.jitterRStdY));
+  L.push('  混合标准差 ' + fmtPx(INSTR.jitterStd) + '   峰峰值 ' + fmtPx(INSTR.jitterP2P) + '   单帧最大跳变 ' + fmtPx(INSTR.jitterMaxJump));
+  L.push('  离群帧占比 ' + fmtPct(INSTR.jitterOutlier) +
+    '（判据：单帧位移 > max(60, 5×中位帧间位移 ' + r0(INSTR.jitterJumpMed) + 'px)）');
   if(!isFinite(INSTR.jitterStd)) L.push('  【注意】第二步只采到 ' + INSTR.jitterFrames + ' 帧，抖动值无法计算，不是「抖动为 0」。');
+  else if(INSTR.jitterOutlier > 0.02) L.push('  【判读】离群帧超过 2%：抖动主要来自关键点跳飞，不是连续噪声。游戏内已用 3 帧中值剔除这类帧。');
   L.push('');
   L.push('【3 三区判定】' + z.n + ' 次，命中 ' + Math.round(z.acc*100) + '%，判定延迟中位 ' + z.lat + 'ms');
   L.push('  混淆矩阵（行=目标 左/中/右，列=判定 左/中/右）');
@@ -1029,6 +1133,16 @@ function buildReport(){
   L.push('  ' + v.tier);
   L.push('  是否需降级模式兜底：' + (v.needDegrade ? '是' : '否'));
   L.push('  自然眨眼 P90 = ' + r0(INSTR.blinkP90) + 'ms，此值用于标记「可能非意图处决」');
+  L.push('  真正决定玩法成立的是随机抖动 ' + r1(v.noise) + 'px，不是总误差 ' + r0(v.mean) + 'px。');
+  if(z.acc >= 0.9 && v.mean > 200){
+    L.push('  【关键】总误差已进擦边带，三区命中却达 ' + Math.round(z.acc*100) + '%：');
+    L.push('         说明「离散判定」（在哪个区）对精度的要求，远低于「连续定位」（盯住某点）。');
+    L.push('         不要用连续定位的误差去否定离散玩法的可行性。');
+  }
+  if(isFinite(INSTR.jitterOutlier) && INSTR.jitterOutlier > 0.05){
+    L.push('  【建议】离群帧 ' + fmtPct(INSTR.jitterOutlier) + ' 偏高，说明真机上关键点检测不稳；');
+    L.push('         这类机型的真实可用性取决于中值剔除后的表现，请对照第 2 节的「中值+低通后」数值。');
+  }
   L.push('');
   L.push('—— 以上数据全部在本机计算，未上传 ——');
   return L.join('\n');
@@ -1043,7 +1157,9 @@ function showReport(){
     '<div class="big" style="color:' + cls + '">' + r0(v.mean) + '<span style="font-size:15px"> px</span></div>' +
     '<div class="kv" style="margin-top:8px"><span>判定</span><b style="color:' + cls + '">' + v.tier + '</b></div>' +
     '<div class="kv"><span>三区命中率</span><b>' + Math.round(z.acc*100) + '%</b></div>' +
-    '<div class="kv"><span>静视抖动</span><b>' + fmtPx(INSTR.jitterStd) + '</b></div>' +
+    '<div class="kv"><span>系统偏移</span><b>' + r0(v.bias) + ' px</b></div>' +
+    '<div class="kv"><span>随机抖动</span><b>' + r0(v.noise) + ' px</b></div>' +
+    '<div class="kv"><span>水平抖动·滤波后</span><b>' + fmtPx(INSTR.jitterRStdX) + '</b></div>' +
     '<div class="kv"><span>自然眨眼 P90</span><b>' + r0(INSTR.blinkP90) + ' ms</b></div>' +
     '<div class="kv"><span>本机眨眼阈值</span><b>' + INSTR.openThr.toFixed(3) + '</b></div>';
   $('repText').value = buildReport();
@@ -1260,6 +1376,33 @@ function renderPlay(dt){
     ctx.setLineDash([6,8]);
     ctx.beginPath(); ctx.moveTo(x0+6, g.attackY); ctx.lineTo(x0+g.zw-6, g.attackY); ctx.stroke();
     ctx.setLineDash([]);
+  }
+
+  /* 时机提示：本作全部深度来自「什么时候闭眼」，但真机第一局打下来
+     挡下 0 次、30 秒只 3 杀 —— 玩家不是手笨，是根本不知道那一刻该闭眼。
+     原型阶段先把这个时机用最直白的话喊出来：可读性优先于氛围。 */
+  if(!GM.blackout){
+    var lockN = 0, telN = 0, telK = 0;
+    GM.enemies.forEach(function(e){
+      if(e.lock) lockN++;
+      if(e.state === 'telegraph'){
+        telN++;
+        telK = Math.max(telK, 1 - (now()-e.telStart)/P.telegraph);
+      }
+    });
+    ctx.textAlign = 'center';
+    if(telN > 0){
+      ctx.font = '600 25px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255,138,133,' + (0.68 + 0.32*Math.sin(now()/110)) + ')';
+      ctx.fillText('现在闭眼 = 挡下', W/2, H*0.40);
+      ctx.font = '500 13px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255,200,198,0.85)';
+      ctx.fillText('还剩 ' + r1(Math.max(0, telK)) + ' 秒', W/2, H*0.40 + 25);
+    } else if(lockN > 0){
+      ctx.font = '600 23px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(47,214,166,' + (0.70 + 0.30*Math.sin(now()/130)) + ')';
+      ctx.fillText('已锁定 ' + lockN + ' 个　闭眼 = 处决', W/2, H*0.40);
+    }
   }
 
   /* 敌人 */
@@ -1586,6 +1729,7 @@ function runInstrument(){
     S.phase = 'instr';
     INSTR.calGains = r.gains;
     INSTR.calErrs = r.errs;
+    INSTR.calErrXY = r.dxy || [];
     if(!r.errs.length) throw new Error('复测没有采到有效点，请重新校准。');
     showScreen('scrInstr');
     $('insTip').textContent = '第一步完成：复测 ' + r.errs.length + ' 点，误差均值 ' + r0(instrVerdict().mean) + 'px';
