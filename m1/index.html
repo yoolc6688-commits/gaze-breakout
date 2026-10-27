@@ -1173,15 +1173,16 @@ function showReport(){
 var P = {
   chargeRate: 220,      // +/s  不可调
   chargeMax: 100,
-  decay: 140,           // −/s
+  decay: 90,            // −/s  真机首轮 140 太快：视线一移开 0.71s 就清空，
+                        //      造成「看一个丢一个」，玩家不敢换目标，节奏被锁死
   blindRate: 110,       // 盲者带标记时的半速
-  execMs: 200,          // 处决阈值  不可调
-  shieldMs: 120,        // 护盾阈值  不可调
-  telegraph: 500,       // 前摇 ms（难度旋钮）
-  enemySpeed: 85,       // px/s
-  spawnGap: 3000,       // ms
-  runMs: 75000,
-  hp: 3
+  execMs: 200,          // 处决阈值  不可调（真机自然眨眼 P90=81ms，留 2.5 倍余量）
+  shieldMs: 100,        // 护盾阈值  真机闭眼中位 97ms，120 会把过半主动闭眼挡在门外
+  telegraph: 800,       // 前摇 ms（难度旋钮）真机三区判定延迟中位 427ms，500 不够反应
+  enemySpeed: 75,       // px/s  85 时 6.6 秒到线，画面上常只有 1–2 个目标
+  spawnGap: 2200,       // ms
+  runMs: 60000,
+  hp: 4
 };
 
 var GM = null;
@@ -1563,6 +1564,10 @@ function stepPlay(dt){
   GM.enemies.forEach(function(e){
     if(e.state !== 'walk') return;
     if(e.mark > 0) e.mark -= dt*1000;
+    /* 锁定即永久：蓄力条不该因为视线移开而回落。
+       先前 cd 会掉到 0，虽然 lock 不解除，但蓄力弧消失、HUD 蓄力条回空，
+       玩家会以为「锁又被取消了」——视觉与规则必须一致。 */
+    if(e.lock){ e.cd = P.chargeMax; return; }
     if(e.zone === z){
       var rate = e.blind ? (e.mark > 0 ? P.blindRate : 0) : P.chargeRate;
       e.cd = Math.min(P.chargeMax, e.cd + rate*dt);
@@ -1604,10 +1609,21 @@ function stepPlay(dt){
   /* 生成 */
   GM.nextSpawn -= dt*1000;
   if(GM.nextSpawn <= 0){
-    spawnEnemy();
-    if(Math.random() < 0.35) spawnEnemy();
-    GM.spawnGap = Math.max(1400, GM.spawnGap - 40);
-    GM.nextSpawn = GM.spawnGap;
+    /* 拥挤保护：场上超过 6 个就暂停生成。
+       自动机实测 60 秒能杀 43 个，但中段仍会短时堆积到 7 个；
+       真人反应慢一个量级，一旦落后就再也追不回来（雪球），
+       这时不是难度变高，是局已经输了却还在继续。 */
+    var alive = GM.enemies.filter(function(e){ return e.state === 'dead' ? false : true; }).length;
+    if(alive >= 6){
+      GM.nextSpawn = 500;
+    } else {
+      spawnEnemy();
+      if(Math.random() < 0.35) spawnEnemy();
+      GM.spawnGap = Math.max(1600, GM.spawnGap - 30);
+      /* 场上不足 2 个时加快补充：自动机实测会出现 2 秒空窗，画面上一个敌人都没有，
+         玩家只能干等——空窗期不产生任何决策，是纯粹的时间浪费。 */
+      GM.nextSpawn = alive < 2 ? 700 : GM.spawnGap;
+    }
   }
 
   GM.enemies = GM.enemies.filter(function(e){ return e.state !== 'dead'; });
